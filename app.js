@@ -184,19 +184,308 @@ function mostrarLogin(mensagem = '') {
   });
 }
 
-const seed = [
-  {id:'1', codigo:'CJ-2026-00157', advogado:'Dr. João Silva', cliente:'Maria Souza', processo:'0001234-56.2025.4.05.8300', area:'Servidor Público', tipo:'Abono de Permanência', status:'EM_CÁLCULO', prioridade:'Alta', calculista:'Patrick', revisor:'', prazo:'2026-09-30', valor:800, recebido:0, origem:'Indicação', sistema:'Abono Computum', descricao:'Apurar diferenças de abono conforme decisão judicial.', data:'2026-09-26', drive:'', historico:[['26/09 09:15','Solicitação criada'],['26/09 09:30','Patrick atribuído'],['27/09 08:12','Cálculo iniciado']]},
-  {id:'2', codigo:'CJ-2026-00156', advogado:'Dra. Ana Costa', cliente:'Carlos Mendes', processo:'0009876-11.2024.4.05.8300', area:'Previdenciário', tipo:'Liquidação de sentença', status:'EM_REVISÃO', prioridade:'Normal', calculista:'Patrick', revisor:'João', prazo:'2026-09-29', valor:1200, recebido:1200, origem:'Instagram', sistema:'', descricao:'Liquidação conforme sentença e acórdão.', data:'2026-09-25', drive:'', historico:[['25/09 10:10','Solicitação criada'],['26/09 15:40','Cálculo concluído'],['26/09 16:20','Enviado para revisão']]},
-  {id:'3', codigo:'CJ-2026-00155', advogado:'Dr. Paulo Lima', cliente:'Renata Alves', processo:'0012345-77.2023.8.17.0001', area:'Cível', tipo:'Dano material', status:'ENVIADO', prioridade:'Normal', calculista:'Patrick', revisor:'', prazo:'2026-09-27', valor:650, recebido:0, origem:'Cliente antigo', sistema:'Diferenças Computum', descricao:'Atualização de danos materiais.', data:'2026-09-23', drive:'', historico:[['23/09 09:00','Solicitação criada'],['26/09 17:05','Cálculo enviado']]},
-  {id:'4', codigo:'CJ-2026-00154', advogado:'Dra. Carla Rocha', cliente:'José Santos', processo:'0005544-20.2024.4.05.8300', area:'Saúde', tipo:'Plano de Saúde', status:'AGUARDANDO_DOCUMENTOS', prioridade:'Alta', calculista:'', revisor:'', prazo:'2026-10-02', valor:900, recebido:0, origem:'Site', sistema:'Saúde Computum', descricao:'Apuração de diferenças de custeio.', data:'2026-09-24', drive:'', historico:[['24/09 14:30','Solicitação criada'],['24/09 14:35','Solicitados documentos complementares']]},
-  {id:'5', codigo:'CJ-2026-00153', advogado:'Dr. Ricardo Melo', cliente:'Fernanda Lima', processo:'0007654-31.2025.5.06.0001', area:'Trabalhista', tipo:'Liquidação', status:'NOVO', prioridade:'Urgente', calculista:'', revisor:'', prazo:'2026-09-28', valor:1500, recebido:500, origem:'Indicação', sistema:'', descricao:'Liquidação de verbas deferidas.', data:'2026-09-26', drive:'', historico:[['26/09 18:00','Solicitação criada']]},
-  {id:'6', codigo:'CJ-2026-00152', advogado:'Dra. Marina Alves', cliente:'Antônio Souza', processo:'0008888-10.2022.4.05.8300', area:'Tributário', tipo:'Diferenças', status:'CONCLUÍDO', prioridade:'Normal', calculista:'João', revisor:'Patrick', prazo:'2026-09-20', valor:1800, recebido:1800, origem:'Cliente antigo', sistema:'Diferenças Computum', descricao:'Apuração de diferenças tributárias.', data:'2026-09-12', drive:'', historico:[['12/09 09:00','Solicitação criada'],['18/09 16:00','Cálculo concluído'],['19/09 10:00','Entregue'],['20/09 09:15','Pagamento recebido']]}
-];
+/* =========================================================
+   DADOS — SUPABASE
+   ========================================================= */
 
 const db = {
-  requests: JSON.parse(localStorage.getItem('computum_requests') || 'null') || seed,
-  save(){ localStorage.setItem('computum_requests', JSON.stringify(this.requests)); }
+  requests: [],
+  save() {
+    // A persistência no Supabase será feita pelas operações CRUD.
+    // Nesta etapa, a leitura já vem do banco.
+  }
 };
+
+function normalizarStatus(status) {
+  const mapa = {
+    NOVO: 'NOVO',
+    ANALISE: 'ANALISE',
+    AGUARDANDO_DOCUMENTOS: 'AGUARDANDO_DOCUMENTOS',
+    EM_CALCULO: 'EM_CÁLCULO',
+    EM_REVISAO: 'EM_REVISÃO',
+    ENVIADO: 'ENVIADO',
+    AGUARDANDO_PAGAMENTO: 'AGUARDANDO_PAGAMENTO',
+    CONCLUIDO: 'CONCLUÍDO',
+    IMPUGNACAO: 'IMPUGNADO',
+    RETRABALHO: 'RETRABALHO',
+    PAUSADO: 'PAUSADO',
+    CANCELADO: 'CANCELADO'
+  };
+
+  return mapa[status] || status || 'NOVO';
+}
+
+function normalizarPrioridade(prioridade) {
+  const mapa = {
+    normal: 'Normal',
+    alta: 'Alta',
+    urgente: 'Urgente'
+  };
+
+  return mapa[prioridade] || prioridade || 'Normal';
+}
+
+async function carregarSolicitacoes() {
+  try {
+    const [
+      solicitacoesResult,
+      advogadosResult,
+      clientesResult,
+      processosResult,
+      areasResult,
+      tiposResult,
+      usuariosResult,
+      sistemasResult,
+      pagamentosResult,
+      historicoResult
+    ] = await Promise.all([
+      supabaseClient
+        .from('solicitacoes')
+        .select(`
+          id,
+          codigo,
+          advogado_id,
+          cliente_id,
+          processo_id,
+          area_id,
+          tipo_servico_id,
+          descricao,
+          prazo,
+          status,
+          prioridade,
+          calculista_id,
+          revisor_id,
+          tipo_entrega,
+          data_solicitacao,
+          data_inicio,
+          data_conclusao,
+          data_envio,
+          valor_cobrado,
+          desconto,
+          valor_final,
+          origem,
+          cliente_antigo,
+          google_drive_folder_id,
+          google_drive_url,
+          observacoes,
+          created_by,
+          created_at,
+          updated_at
+        `)
+        .order('created_at', { ascending: false }),
+
+      supabaseClient
+        .from('advogados')
+        .select('id, nome, origem, ativo'),
+
+      supabaseClient
+        .from('clientes')
+        .select('id, nome, cpf'),
+
+      supabaseClient
+        .from('processos')
+        .select('id, numero_processo, cliente_id'),
+
+      supabaseClient
+        .from('areas_servico')
+        .select('id, nome, ativo, ordem'),
+
+      supabaseClient
+        .from('tipos_servico')
+        .select('id, area_id, nome, ativo, ordem'),
+
+      supabaseClient
+        .from('usuarios')
+        .select('id, nome, email, perfil, ativo'),
+
+      supabaseClient
+        .from('sistemas_especializados')
+        .select('id, nome, url, area_id, descricao, ativo, ordem'),
+
+      supabaseClient
+        .from('pagamentos')
+        .select('id, solicitacao_id, valor, data_pagamento, forma_pagamento, observacao'),
+
+      supabaseClient
+        .from('historico_solicitacao')
+        .select('id, solicitacao_id, usuario_id, tipo_evento, descricao, data_hora')
+        .order('data_hora', { ascending: true })
+    ]);
+
+    const resultados = [
+      solicitacoesResult,
+      advogadosResult,
+      clientesResult,
+      processosResult,
+      areasResult,
+      tiposResult,
+      usuariosResult,
+      sistemasResult,
+      pagamentosResult,
+      historicoResult
+    ];
+
+    const erro = resultados.find(resultado => resultado.error);
+
+    if (erro) {
+      console.error('Erro ao carregar dados do Supabase:', erro.error);
+
+      $('#content').innerHTML = `
+        <div class="card" style="padding:24px">
+          <h2>Não foi possível carregar as solicitações.</h2>
+          <p class="muted" style="margin-top:8px">
+            Verifique a conexão com o Supabase e tente novamente.
+          </p>
+        </div>
+      `;
+
+      return false;
+    }
+
+    const solicitacoes = solicitacoesResult.data || [];
+    const advogados = advogadosResult.data || [];
+    const clientes = clientesResult.data || [];
+    const processos = processosResult.data || [];
+    const areas = areasResult.data || [];
+    const tipos = tiposResult.data || [];
+    const usuarios = usuariosResult.data || [];
+    const sistemas = sistemasResult.data || [];
+    const pagamentos = pagamentosResult.data || [];
+    const historico = historicoResult.data || [];
+
+    const advogadoMap = new Map(
+      advogados.map(item => [item.id, item])
+    );
+
+    const clienteMap = new Map(
+      clientes.map(item => [item.id, item])
+    );
+
+    const processoMap = new Map(
+      processos.map(item => [item.id, item])
+    );
+
+    const areaMap = new Map(
+      areas.map(item => [item.id, item])
+    );
+
+    const tipoMap = new Map(
+      tipos.map(item => [item.id, item])
+    );
+
+    const usuarioMap = new Map(
+      usuarios.map(item => [item.id, item])
+    );
+
+    const sistemaMap = new Map(
+      sistemas.map(item => [item.area_id, item])
+    );
+
+    const pagamentosPorSolicitacao = new Map();
+
+    pagamentos.forEach(pagamento => {
+      const atual =
+        pagamentosPorSolicitacao.get(pagamento.solicitacao_id) || 0;
+
+      pagamentosPorSolicitacao.set(
+        pagamento.solicitacao_id,
+        atual + Number(pagamento.valor || 0)
+      );
+    });
+
+    const historicoPorSolicitacao = new Map();
+
+    historico.forEach(evento => {
+      const lista =
+        historicoPorSolicitacao.get(evento.solicitacao_id) || [];
+
+      const usuario = usuarioMap.get(evento.usuario_id);
+
+      lista.push([
+        new Date(evento.data_hora).toLocaleString('pt-BR'),
+        evento.descricao || evento.tipo_evento || 'Evento registrado',
+        usuario?.nome || ''
+      ]);
+
+      historicoPorSolicitacao.set(
+        evento.solicitacao_id,
+        lista
+      );
+    });
+
+    db.requests = solicitacoes.map(solicitacao => {
+      const advogado = advogadoMap.get(solicitacao.advogado_id);
+      const cliente = clienteMap.get(solicitacao.cliente_id);
+      const processo = processoMap.get(solicitacao.processo_id);
+      const area = areaMap.get(solicitacao.area_id);
+      const tipo = tipoMap.get(solicitacao.tipo_servico_id);
+      const calculista = usuarioMap.get(solicitacao.calculista_id);
+      const revisor = usuarioMap.get(solicitacao.revisor_id);
+      const sistema = sistemaMap.get(solicitacao.area_id);
+
+      return {
+        id: solicitacao.id,
+        codigo: solicitacao.codigo,
+        advogado: advogado?.nome || 'Não informado',
+        cliente: cliente?.nome || 'Não informado',
+        processo: processo?.numero_processo || 'Não informado',
+        area: area?.nome || 'Não informado',
+        tipo: tipo?.nome || 'Não informado',
+        status: normalizarStatus(solicitacao.status),
+        prioridade: normalizarPrioridade(solicitacao.prioridade),
+        calculista: calculista?.nome || '',
+        revisor: revisor?.nome || '',
+        prazo: solicitacao.prazo || '',
+
+        valor: Number(
+          Number(solicitacao.valor_final || 0) > 0
+            ? solicitacao.valor_final
+            : (solicitacao.valor_cobrado || 0)
+        ),
+
+        recebido: Number(
+          pagamentosPorSolicitacao.get(solicitacao.id) || 0
+        ),
+
+        origem: solicitacao.origem || advogado?.origem || '',
+        sistema: sistema?.nome || '',
+        descricao: solicitacao.descricao || '',
+
+        data: solicitacao.data_solicitacao
+          ? solicitacao.data_solicitacao.slice(0, 10)
+          : '',
+
+        drive: solicitacao.google_drive_url || '',
+
+        historico:
+          historicoPorSolicitacao.get(solicitacao.id) || []
+      };
+    });
+
+    console.info(
+      `Supabase: ${db.requests.length} solicitação(ões) carregada(s).`
+    );
+
+    return true;
+
+  } catch (error) {
+    console.error(
+      'Erro inesperado ao carregar dados:',
+      error
+    );
+
+    $('#content').innerHTML = `
+      <div class="card" style="padding:24px">
+        <h2>Erro ao carregar os dados.</h2>
+        <p class="muted" style="margin-top:8px">
+          Ocorreu um erro inesperado ao consultar o Supabase.
+        </p>
+      </div>
+    `;
+
+    return false;
+  }
+}
 
 const state = { view:'dashboard', query:'', status:'', area:'', selected:null };
 const $ = (s, root=document) => root.querySelector(s);
