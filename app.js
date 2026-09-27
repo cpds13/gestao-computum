@@ -9,7 +9,152 @@ const CONFIG = {
   googleDriveFolderId: '',
   productionReady: false
 };
+/* =========================================================
+   AUTENTICAÇÃO — SUPABASE
+   ========================================================= */
 
+let currentUser = null;
+let currentProfile = null;
+
+async function carregarSessao() {
+  const {
+    data: { session },
+    error
+  } = await supabaseClient.auth.getSession();
+
+  if (error) {
+    console.error('Erro ao recuperar sessão:', error);
+    mostrarLogin();
+    return false;
+  }
+
+  if (!session?.user) {
+    mostrarLogin();
+    return false;
+  }
+
+  currentUser = session.user;
+
+  const { data: profile, error: profileError } = await supabaseClient
+    .from('usuarios')
+    .select('id, nome, email, perfil, ativo')
+    .eq('id', currentUser.id)
+    .single();
+
+  if (profileError) {
+    console.error('Erro ao carregar perfil:', profileError);
+    mostrarLogin('Não foi possível carregar o perfil do usuário.');
+    return false;
+  }
+
+  if (!profile.ativo) {
+    await supabaseClient.auth.signOut();
+    mostrarLogin('Este usuário está inativo.');
+    return false;
+  }
+
+  currentProfile = profile;
+
+  return true;
+}
+
+function mostrarLogin(mensagem = '') {
+  const appShell = document.getElementById('appShell');
+
+  if (!appShell) return;
+
+  appShell.innerHTML = `
+    <div class="login-screen">
+      <div class="login-card">
+
+        <div class="login-brand">
+          <div class="brand-mark"><span></span></div>
+          <div>
+            <strong>COMPUTUM</strong>
+            <small>Gestão de Cálculos</small>
+          </div>
+        </div>
+
+        <h1>Entrar</h1>
+        <p class="login-subtitle">
+          Acesse a Gestão Computum.
+        </p>
+
+        ${mensagem ? `
+          <div class="login-message">
+            ${mensagem}
+          </div>
+        ` : ''}
+
+        <form id="loginForm">
+
+          <div class="field">
+            <label for="loginEmail">E-mail</label>
+            <input
+              id="loginEmail"
+              type="email"
+              class="input"
+              autocomplete="email"
+              required
+            >
+          </div>
+
+          <div class="field">
+            <label for="loginPassword">Senha</label>
+            <input
+              id="loginPassword"
+              type="password"
+              class="input"
+              autocomplete="current-password"
+              required
+            >
+          </div>
+
+          <button
+            type="submit"
+            class="btn btn-primary login-button"
+          >
+            Entrar
+          </button>
+
+          <div id="loginError" class="login-error"></div>
+
+        </form>
+
+      </div>
+    </div>
+  `;
+
+  const form = document.getElementById('loginForm');
+
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    const button = form.querySelector('button[type="submit"]');
+    const errorBox = document.getElementById('loginError');
+
+    button.disabled = true;
+    button.textContent = 'Entrando...';
+    errorBox.textContent = '';
+
+    const { error } = await supabaseClient.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (error) {
+      console.error('Erro de login:', error);
+      errorBox.textContent = 'E-mail ou senha inválidos.';
+      button.disabled = false;
+      button.textContent = 'Entrar';
+      return;
+    }
+
+    window.location.reload();
+  });
+}
 const seed = [
   {id:'1', codigo:'CJ-2026-00157', advogado:'Dr. João Silva', cliente:'Maria Souza', processo:'0001234-56.2025.4.05.8300', area:'Servidor Público', tipo:'Abono de Permanência', status:'EM_CÁLCULO', prioridade:'Alta', calculista:'Patrick', revisor:'', prazo:'2026-09-30', valor:800, recebido:0, origem:'Indicação', sistema:'Abono Computum', descricao:'Apurar diferenças de abono conforme decisão judicial.', data:'2026-09-26', drive:'', historico:[['26/09 09:15','Solicitação criada'],['26/09 09:30','Patrick atribuído'],['27/09 08:12','Cálculo iniciado']]},
   {id:'2', codigo:'CJ-2026-00156', advogado:'Dra. Ana Costa', cliente:'Carlos Mendes', processo:'0009876-11.2024.4.05.8300', area:'Previdenciário', tipo:'Liquidação de sentença', status:'EM_REVISÃO', prioridade:'Normal', calculista:'Patrick', revisor:'João', prazo:'2026-09-29', valor:1200, recebido:1200, origem:'Instagram', sistema:'', descricao:'Liquidação conforme sentença e acórdão.', data:'2026-09-25', drive:'', historico:[['25/09 10:10','Solicitação criada'],['26/09 15:40','Cálculo concluído'],['26/09 16:20','Enviado para revisão']]},
