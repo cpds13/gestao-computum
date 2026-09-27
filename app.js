@@ -235,6 +235,7 @@ async function carregarSolicitacoes() {
       processosResult,
       areasResult,
       tiposResult,
+      calculistasResult,
       usuariosResult,
       sistemasResult,
       pagamentosResult,
@@ -296,6 +297,12 @@ async function carregarSolicitacoes() {
         .select('id, area_id, nome, ativo, ordem'),
 
       supabaseClient
+        .from('calculistas')
+        .select('id, nome, ativo')
+        .eq('ativo', true)
+        .order('nome'),
+
+      supabaseClient
         .from('usuarios')
         .select('id, nome, email, perfil, ativo'),
 
@@ -320,6 +327,7 @@ async function carregarSolicitacoes() {
       processosResult,
       areasResult,
       tiposResult,
+      calculistasResult,
       usuariosResult,
       sistemasResult,
       pagamentosResult,
@@ -349,7 +357,11 @@ async function carregarSolicitacoes() {
     const processos = processosResult.data || [];
     const areas = areasResult.data || [];
     const tipos = tiposResult.data || [];
+    const calculistas = calculistasResult.data || [];
     const usuarios = usuariosResult.data || [];
+
+    db.calculistas = calculistas;
+
     const sistemas = sistemasResult.data || [];
     const pagamentos = pagamentosResult.data || [];
     const historico = historicoResult.data || [];
@@ -420,7 +432,12 @@ async function carregarSolicitacoes() {
       const processo = processoMap.get(solicitacao.processo_id);
       const area = areaMap.get(solicitacao.area_id);
       const tipo = tipoMap.get(solicitacao.tipo_servico_id);
-      const calculista = usuarioMap.get(solicitacao.calculista_id);
+
+      const calculista =
+        db.calculistas.find(
+          item => item.id === solicitacao.calculista_id
+        );
+
       const revisor = usuarioMap.get(solicitacao.revisor_id);
       const sistema = sistemaMap.get(solicitacao.area_id);
 
@@ -488,259 +505,2015 @@ async function carregarSolicitacoes() {
   }
 }
 
-const state = { view:'dashboard', query:'', status:'', area:'', selected:null };
-const $ = (s, root=document) => root.querySelector(s);
-const $$ = (s, root=document) => [...root.querySelectorAll(s)];
-const money = n => Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-const fmtDate = s => s ? new Date(s+'T12:00:00').toLocaleDateString('pt-BR') : '—';
+const state = {
+  view: 'dashboard',
+  query: '',
+  status: '',
+  area: '',
+  selected: null
+};
+
+const $ = (s, root = document) => root.querySelector(s);
+const $$ = (s, root = document) => [...root.querySelectorAll(s)];
+
+const money = n =>
+  Number(n || 0).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL'
+  });
+
+const fmtDate = s =>
+  s
+    ? new Date(s + 'T12:00:00').toLocaleDateString('pt-BR')
+    : '—';
+
 const today = new Date();
-const daysTo = s => s ? Math.ceil((new Date(s+'T12:00:00') - new Date(today.getFullYear(),today.getMonth(),today.getDate()))/86400000) : 9999;
-const statusLabel = {NOVO:'Novo', ANALISE:'Análise', AGUARDANDO_DOCUMENTOS:'Aguardando documentos', EM_CÁLCULO:'Em cálculo', EM_REVISÃO:'Em revisão', ENVIADO:'Enviado', AGUARDANDO_PAGAMENTO:'Aguardando pagamento', CONCLUÍDO:'Concluído', IMPUGNADO:'Impugnado', PAUSADO:'Pausado', CANCELADO:'Cancelado'};
-const statusClass = s => ({NOVO:'novo',EM_CÁLCULO:'calculo',EM_REVISÃO:'revisao',ENVIADO:'enviado',CONCLUÍDO:'concluido',AGUARDANDO_DOCUMENTOS:'aguardando',AGUARDANDO_PAGAMENTO:'aguardando',IMPUGNADO:'atrasado'}[s] || 'novo');
 
-function showToast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2600); }
-function nav(view){ state.view=view; state.query=''; render(); if(window.innerWidth<801) $('#sidebar').classList.remove('open'); }
-function activeNav(){ $$('.nav-item[data-view]').forEach(b=>b.classList.toggle('active', b.dataset.view===state.view)); }
+const daysTo = s =>
+  s
+    ? Math.ceil(
+        (
+          new Date(s + 'T12:00:00') -
+          new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            today.getDate()
+          )
+        ) / 86400000
+      )
+    : 9999;
 
-function render(){
+const statusLabel = {
+  NOVO: 'Novo',
+  ANALISE: 'Análise',
+  AGUARDANDO_DOCUMENTOS: 'Aguardando documentos',
+  EM_CÁLCULO: 'Em cálculo',
+  EM_REVISÃO: 'Em revisão',
+  ENVIADO: 'Enviado',
+  AGUARDANDO_PAGAMENTO: 'Aguardando pagamento',
+  CONCLUÍDO: 'Concluído',
+  IMPUGNADO: 'Impugnado',
+  PAUSADO: 'Pausado',
+  CANCELADO: 'Cancelado'
+};
+
+const statusClass = s =>
+  ({
+    NOVO: 'novo',
+    EM_CÁLCULO: 'calculo',
+    EM_REVISÃO: 'revisao',
+    ENVIADO: 'enviado',
+    CONCLUÍDO: 'concluido',
+    AGUARDANDO_DOCUMENTOS: 'aguardando',
+    AGUARDANDO_PAGAMENTO: 'aguardando',
+    IMPUGNADO: 'atrasado'
+  }[s] || 'novo');
+
+function showToast(msg) {
+  const t = $('#toast');
+
+  t.textContent = msg;
+  t.classList.add('show');
+
+  setTimeout(
+    () => t.classList.remove('show'),
+    2600
+  );
+}
+
+function nav(view) {
+  state.view = view;
+  state.query = '';
+
+  render();
+
+  if (window.innerWidth < 801) {
+    $('#sidebar').classList.remove('open');
+  }
+}
+
+function activeNav() {
+  $$('.nav-item[data-view]').forEach(b =>
+    b.classList.toggle(
+      'active',
+      b.dataset.view === state.view
+    )
+  );
+}
+
+function render() {
   activeNav();
-  const titles={dashboard:'Dashboard',solicitacoes:'Solicitações',advogados:'Advogados',clientes:'Clientes',processos:'Processos',calculistas:'Calculistas',financeiro:'Financeiro',relatorios:'Relatórios',configuracoes:'Configurações'};
-  $('#breadcrumb').textContent=titles[state.view]||'Dashboard';
-  const fn = views[state.view] || views.dashboard;
+
+  const titles = {
+    dashboard: 'Dashboard',
+    solicitacoes: 'Solicitações',
+    advogados: 'Advogados',
+    clientes: 'Clientes',
+    processos: 'Processos',
+    calculistas: 'Calculistas',
+    financeiro: 'Financeiro',
+    relatorios: 'Relatórios',
+    configuracoes: 'Configurações'
+  };
+
+  $('#breadcrumb').textContent =
+    titles[state.view] || 'Dashboard';
+
+  const fn =
+    views[state.view] ||
+    views.dashboard;
+
   $('#content').innerHTML = fn();
+
   bindView();
 }
 
-function pageHead(title, sub, action='') { return `<div class="page-head"><div><h1>${title}</h1><p>${sub}</p></div>${action?`<div class="actions">${action}</div>`:''}</div>`; }
-function kpi(label,value,sub){return `<div class="card kpi"><div class="label">${label}</div><div class="value">${value}</div><div class="sub">${sub}</div></div>`}
-function requestRow(r){return `<tr data-open="${r.id}"><td><strong>${r.codigo}</strong></td><td>${r.advogado}</td><td>${r.cliente}</td><td>${r.tipo}</td><td>${r.calculista||'<span class="muted">Não atribuído</span>'}</td><td>${fmtDate(r.prazo)}</td><td><span class="status ${statusClass(r.status)}">${statusLabel[r.status]||r.status}</span></td><td class="money">${money(r.valor)}</td></tr>`}
-function tableRequests(rows){ if(!rows.length)return `<div class="empty">Nenhuma solicitação encontrada.</div>`; return `<div class="table-wrap"><table><thead><tr><th>Código</th><th>Advogado</th><th>Cliente</th><th>Serviço</th><th>Calculista</th><th>Prazo</th><th>Status</th><th>Valor</th></tr></thead><tbody>${rows.map(requestRow).join('')}</tbody></table></div>`; }
-
-const views = {
- dashboard(){
-   const open=db.requests.filter(r=>!['CONCLUÍDO','CANCELADO'].includes(r.status)).length;
-   const recv=db.requests.reduce((a,r)=>a+(r.recebido||0),0), billed=db.requests.reduce((a,r)=>a+(r.valor||0),0);
-   const due=db.requests.reduce((a,r)=>a+Math.max(0,(r.valor||0)-(r.recebido||0)),0);
-   const retr=2;
-   const attention=db.requests.filter(r=>daysTo(r.prazo)<=3 && !['CONCLUÍDO','CANCELADO'].includes(r.status));
-   return pageHead(`Boa noite, ${currentProfile?.nome || 'Usuário'}`,'Visão geral da operação de cálculos judiciais.','<button class="btn btn-primary" data-new>＋ Nova solicitação</button>')+
-   `<div class="grid kpi-grid">${kpi('Em aberto',open,'Solicitações não concluídas')}${kpi('A receber',money(due),'Saldo das demandas')}${kpi('Recebido',money(recv),'Acumulado no protótipo')}${kpi('Retrabalhos',retr,'Ocorrências recentes')}</div>`+
-   `<div class="section-grid"><section class="card"><div class="card-head"><h2>Solicitações recentes</h2><button class="kpi-link" data-view-link="solicitacoes">Ver todas</button></div>${tableRequests(db.requests.slice(0,6))}</section><section class="card"><div class="card-head"><h2>Precisam de atenção</h2></div><div class="card-body"><div class="alert-list">${attention.length?attention.map(r=>`<div class="alert ${daysTo(r.prazo)<0?'danger':'warning'}" data-open="${r.id}"><div class="mark"></div><div><strong>${r.codigo} · ${r.tipo}</strong><small>${daysTo(r.prazo)<0?'Atrasado':daysTo(r.prazo)===0?'Vence hoje':`Vence em ${daysTo(r.prazo)} dias`} · ${r.advogado}</small></div></div>`).join(''):`<div class="empty">Nenhuma pendência urgente.</div>`}</div></div></section></div>`;
- },
- solicitacoes(){
-   let rows=db.requests.filter(r=>(!state.query || `${r.codigo} ${r.advogado} ${r.cliente} ${r.processo} ${r.tipo}`.toLowerCase().includes(state.query.toLowerCase())) && (!state.status||r.status===state.status) && (!state.area||r.area===state.area));
-   return pageHead('Solicitações',`${rows.length} demanda(s) encontrada(s).`,'<button class="btn btn-primary" data-new>＋ Nova solicitação</button>')+
-   `<div class="card filters"><div class="field"><label>Pesquisar</label><input class="input" id="q" placeholder="Advogado, cliente, processo ou código..." value="${state.query}"></div><div class="field small"><label>Status</label><select id="filterStatus"><option value="">Todos</option>${Object.entries(statusLabel).map(([k,v])=>`<option value="${k}" ${state.status===k?'selected':''}>${v}</option>`).join('')}</select></div><div class="field small"><label>Área</label><select id="filterArea"><option value="">Todas</option>${['Previdenciário','Trabalhista','Servidor Público','Cível','Tributário','Saúde'].map(v=>`<option ${state.area===v?'selected':''}>${v}</option>`).join('')}</select></div><div class="field small"><label>Visualização</label><select id="viewMode"><option value="table">Tabela</option><option value="kanban">Kanban</option></select></div></div><div id="requestList" class="card">${tableRequests(rows)}</div>`;
- },
- advogados(){
-   const names=[...new Set(db.requests.map(r=>r.advogado))];
-   return pageHead('Advogados','Relacionamento e histórico dos solicitantes.')+`<div class="grid two-col">${names.map(n=>{const rs=db.requests.filter(r=>r.advogado===n), bill=rs.reduce((a,r)=>a+r.valor,0), rec=rs.reduce((a,r)=>a+r.recebido,0);return `<div class="card"><div class="profile-card"><div class="avatar">${n.replace(/[^A-Za-zÀ-ÿ]/g,'').slice(0,1)||'A'}</div><div class="person-meta"><h3>${n}</h3><p>${rs[0].origem} · ${rs.length} solicitações</p></div></div><div class="card-body"><div class="mini-stats"><div class="mini-stat"><strong>${rs.length}</strong><small>Solicitações</small></div><div class="mini-stat"><strong>${money(bill)}</strong><small>Faturado</small></div><div class="mini-stat"><strong>${money(bill-rec)}</strong><small>A receber</small></div></div></div></div>`}).join('')}</div>`;
- },
- clientes(){
-   const names=[...new Set(db.requests.map(r=>r.cliente))];
-   return pageHead('Clientes','Clientes finais relacionados às demandas.')+`<div class="card">${names.length?`<div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Processo</th><th>Solicitações</th><th>Valor</th><th>Recebido</th></tr></thead><tbody>${names.map(n=>{const rs=db.requests.filter(r=>r.cliente===n);return `<tr data-open="${rs[0].id}"><td><strong>${n}</strong></td><td>${rs[0].processo||'—'}</td><td>${rs.length}</td><td class="money">${money(rs.reduce((a,r)=>a+r.valor,0))}</td><td class="money">${money(rs.reduce((a,r)=>a+r.recebido,0))}</td></tr>`}).join('')}</tbody></table></div>`:`<div class="empty">Nenhum cliente.</div>`}</div>`;
- },
- processos(){
-   return pageHead('Processos','Pesquisa e acompanhamento das demandas por processo.')+`<div class="card filters"><div class="field"><label>Pesquisar processo</label><input class="input" id="processSearch" placeholder="Número do processo..."></div></div><div id="processTable" class="card">${processTable('')}</div>`;
- },
- calculistas(){
-   const names=['Patrick','João']; return pageHead('Calculistas','Distribuição e acompanhamento operacional.')+`<div class="grid two-col">${names.map(n=>{const rs=db.requests.filter(r=>r.calculista===n);const done=rs.filter(r=>r.status==='CONCLUÍDO').length;const active=rs.filter(r=>!['CONCLUÍDO','CANCELADO'].includes(r.status)).length;return `<div class="card"><div class="card-body"><div class="profile-card" style="padding:0"><div class="avatar">${n[0]}</div><div class="person-meta"><h3>${n}</h3><p>Calculista</p></div></div><div class="mini-stats"><div class="mini-stat"><strong>${active}</strong><small>Em andamento</small></div><div class="mini-stat"><strong>${done}</strong><small>Concluídos</small></div><div class="mini-stat"><strong>${rs.length}</strong><small>Total</small></div></div></div></div>`}).join('')}</div>`;
- },
- financeiro(){
-   const billed=db.requests.reduce((a,r)=>a+r.valor,0), rec=db.requests.reduce((a,r)=>a+r.recebido,0), due=billed-rec;
-   return pageHead('Financeiro','Faturamento, recebimentos e contas a receber.')+`<div class="grid kpi-grid">${kpi('Faturado',money(billed),'Total das solicitações')}${kpi('Recebido',money(rec),'Pagamentos registrados')}${kpi('A receber',money(due),'Saldo em aberto')}${kpi('Em atraso',money(db.requests.filter(r=>daysTo(r.prazo)<0 && r.valor>r.recebido).reduce((a,r)=>a+(r.valor-r.recebido),0)),'Prazos vencidos')}</div><div class="card" style="margin-top:16px"><div class="card-head"><h2>Contas a receber</h2></div><div class="table-wrap"><table><thead><tr><th>Solicitação</th><th>Advogado</th><th>Serviço</th><th>Cobrado</th><th>Recebido</th><th>Saldo</th><th>Status</th></tr></thead><tbody>${db.requests.filter(r=>r.valor>r.recebido).map(r=>`<tr data-open="${r.id}"><td><strong>${r.codigo}</strong></td><td>${r.advogado}</td><td>${r.tipo}</td><td class="money">${money(r.valor)}</td><td class="money">${money(r.recebido)}</td><td class="money">${money(r.valor-r.recebido)}</td><td><span class="status ${daysTo(r.prazo)<0?'atrasado':'aguardando'}">${daysTo(r.prazo)<0?'Em atraso':'A receber'}</span></td></tr>`).join('')}</tbody></table></div></div>`;
- },
- relatorios(){
-   const areas={}; db.requests.forEach(r=>areas[r.area]=(areas[r.area]||0)+1); const orig={}; db.requests.forEach(r=>orig[r.origem]=(orig[r.origem]||0)+1);
-   return pageHead('Relatórios','Visões operacionais para produção, origem e financeiro.')+`<div class="grid two-col"><section class="card"><div class="card-head"><h2>Solicitações por área</h2></div><div class="card-body">${Object.entries(areas).map(([k,v])=>`<div style="display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--line);font-size:13px"><span>${k}</span><strong>${v}</strong></div>`).join('')}</div></section><section class="card"><div class="card-head"><h2>Origem das solicitações</h2></div><div class="card-body">${Object.entries(orig).map(([k,v])=>`<div style="display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--line);font-size:13px"><span>${k}</span><strong>${v}</strong></div>`).join('')}</div></section></div><div class="notice" style="margin-top:16px">Os gráficos avançados, exportação e indicadores históricos serão ligados ao Supabase na próxima etapa.</div>`;
- },
- configuracoes(){
-   return pageHead('Configurações','Cadastros e integrações do Gestão Computum.')+`<div class="grid two-col"><section class="card"><div class="card-head"><h2>Sistemas especializados</h2><button class="btn" data-system>＋ Adicionar</button></div><div class="card-body"><div class="alert-list"><div class="alert"><div class="mark"></div><div><strong>Abono Computum</strong><small>https://abono.computum.com.br</small></div></div><div class="alert"><div class="mark"></div><div><strong>Diferenças Computum</strong><small>https://diferencas.computum.com.br</small></div></div><div class="alert"><div class="mark"></div><div><strong>Saúde Computum</strong><small>https://saude.computum.com.br</small></div></div></div></div></section><section class="card"><div class="card-head"><h2>Integrações</h2></div><div class="card-body"><div class="notice"><strong>Supabase:</strong> aguardando URL e chave pública do projeto.</div><div class="notice" style="margin-top:10px"><strong>Google Drive:</strong> integração preparada conceitualmente; requer OAuth/configuração da aplicação.</div></div></section></div>`;
- }
-};
-
-function processTable(q){const seen=new Map();db.requests.forEach(r=>{if(q && !r.processo.toLowerCase().includes(q.toLowerCase()))return;if(!seen.has(r.processo))seen.set(r.processo,r)});const rows=[...seen.values()];return rows.length?`<div class="table-wrap"><table><thead><tr><th>Processo</th><th>Cliente</th><th>Advogado</th><th>Último serviço</th><th>Status</th></tr></thead><tbody>${rows.map(r=>`<tr data-open="${r.id}"><td><strong>${r.processo}</strong></td><td>${r.cliente}</td><td>${r.advogado}</td><td>${r.tipo}</td><td><span class="status ${statusClass(r.status)}">${statusLabel[r.status]}</span></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty">Nenhum processo encontrado.</div>`}
-
-function newModal(){
-  return `<div class="modal-backdrop" id="requestModal"><div class="modal"><div class="modal-head"><h2>Nova solicitação</h2><button class="close" data-close>×</button></div><form id="requestForm"><div class="modal-body"><div class="notice" style="margin-bottom:16px">Cadastro rápido: os dados podem ser complementados depois. O upload para o Google Drive será conectado quando a integração OAuth estiver configurada.</div><div class="form-grid"><div class="field"><label>Advogado *</label><input required name="advogado" class="input" placeholder="Nome do advogado"></div><div class="field"><label>Origem</label><select name="origem"><option>Indicação</option><option>Instagram</option><option>Site</option><option>WhatsApp</option><option>Cliente antigo</option><option>LinkedIn</option><option>Outro</option></select></div><div class="field"><label>Cliente *</label><input required name="cliente" class="input" placeholder="Nome do cliente"></div><div class="field"><label>CPF</label><input name="cpf" class="input" placeholder="Opcional"></div><div class="field"><label>Número do processo</label><input name="processo" class="input" placeholder="0000000-00.0000.0.00.0000"></div><div class="field"><label>Prazo</label><input type="date" name="prazo" class="input"></div><div class="field"><label>Área *</label><select required name="area" id="newArea"><option value="">Selecione</option><option>Previdenciário</option><option>Trabalhista</option><option>Servidor Público</option><option>Cível</option><option>Tributário</option><option>Saúde</option></select></div><div class="field"><label>Tipo de serviço *</label><select required name="tipo" id="newTipo"><option value="">Selecione a área primeiro</option></select></div><div class="field"><label>Calculista</label><select name="calculista"><option value="">Não atribuído</option><option>Patrick</option><option>João</option></select></div><div class="field"><label>Valor cobrado</label><input name="valor" class="input" inputmode="decimal" placeholder="0,00"></div><div class="field"><label>Prioridade</label><select name="prioridade"><option>Normal</option><option>Alta</option><option>Urgente</option></select></div><div class="field"><label>Tipo de entrega</label><select name="entrega"><option>Cálculo</option><option>Cálculo + parecer</option><option>Apenas parecer</option><option>Conferência</option></select></div><div class="field full"><label>Texto da solicitação</label><textarea name="descricao" rows="4" placeholder="Cole aqui a mensagem ou descreva o que o advogado solicitou..."></textarea></div><div class="field full"><label>Documento inicial</label><input type="file" name="arquivo" class="input" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"></div></div></div><div class="modal-foot"><button type="button" class="btn" data-close>Cancelar</button><button type="submit" class="btn btn-primary">Criar solicitação</button></div></form></div></div>`;
+function pageHead(title, sub, action = '') {
+  return `
+    <div class="page-head">
+      <div>
+        <h1>${title}</h1>
+        <p>${sub}</p>
+      </div>
+      ${
+        action
+          ? `<div class="actions">${action}</div>`
+          : ''
+      }
+    </div>
+  `;
 }
 
-const serviceMap={
- 'Previdenciário':['Liquidação de sentença','Revisão de RMI','Atualização','LOAS','Outro'],
- 'Trabalhista':['Liquidação','Dano material','Dano moral','Atualização','Outro'],
- 'Servidor Público':['Abono de Permanência','Verbas remuneratórias','13º salário','Férias','Outro'],
- 'Cível':['Dano material','Dano moral','Liquidação','Atualização','Outro'],
- 'Tributário':['Diferenças','Atualização','Liquidação','Outro'],
- 'Saúde':['Plano de Saúde','Dano material','Dano moral','Liquidação','Outro']
+function kpi(label, value, sub) {
+  return `
+    <div class="card kpi">
+      <div class="label">${label}</div>
+      <div class="value">${value}</div>
+      <div class="sub">${sub}</div>
+    </div>
+  `;
+}
+
+function requestRow(r) {
+  return `
+    <tr data-open="${r.id}">
+      <td><strong>${r.codigo}</strong></td>
+      <td>${r.advogado}</td>
+      <td>${r.cliente}</td>
+      <td>${r.tipo}</td>
+      <td>
+        ${
+          r.calculista ||
+          '<span class="muted">Não atribuído</span>'
+        }
+      </td>
+      <td>${fmtDate(r.prazo)}</td>
+      <td>
+        <span class="status ${statusClass(r.status)}">
+          ${statusLabel[r.status] || r.status}
+        </span>
+      </td>
+      <td class="money">${money(r.valor)}</td>
+    </tr>
+  `;
+}
+
+function tableRequests(rows) {
+  if (!rows.length) {
+    return `
+      <div class="empty">
+        Nenhuma solicitação encontrada.
+      </div>
+    `;
+  }
+
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Código</th>
+            <th>Advogado</th>
+            <th>Cliente</th>
+            <th>Serviço</th>
+            <th>Calculista</th>
+            <th>Prazo</th>
+            <th>Status</th>
+            <th>Valor</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(requestRow).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+const views = {
+
+  dashboard() {
+    const open =
+      db.requests.filter(
+        r =>
+          ![
+            'CONCLUÍDO',
+            'CANCELADO'
+          ].includes(r.status)
+      ).length;
+
+    const recv =
+      db.requests.reduce(
+        (a, r) => a + (r.recebido || 0),
+        0
+      );
+
+    const billed =
+      db.requests.reduce(
+        (a, r) => a + (r.valor || 0),
+        0
+      );
+
+    const due =
+      db.requests.reduce(
+        (a, r) =>
+          a +
+          Math.max(
+            0,
+            (r.valor || 0) -
+              (r.recebido || 0)
+          ),
+        0
+      );
+
+    const retr = 2;
+
+    const attention =
+      db.requests.filter(
+        r =>
+          daysTo(r.prazo) <= 3 &&
+          ![
+            'CONCLUÍDO',
+            'CANCELADO'
+          ].includes(r.status)
+      );
+
+    return (
+      pageHead(
+        `Boa noite, ${
+          currentProfile?.nome || 'Usuário'
+        }`,
+        'Visão geral da operação de cálculos judiciais.',
+        '<button class="btn btn-primary" data-new>＋ Nova solicitação</button>'
+      ) +
+
+      `<div class="grid kpi-grid">
+        ${kpi(
+          'Em aberto',
+          open,
+          'Solicitações não concluídas'
+        )}
+
+        ${kpi(
+          'A receber',
+          money(due),
+          'Saldo das demandas'
+        )}
+
+        ${kpi(
+          'Recebido',
+          money(recv),
+          'Acumulado no protótipo'
+        )}
+
+        ${kpi(
+          'Retrabalhos',
+          retr,
+          'Ocorrências recentes'
+        )}
+      </div>` +
+
+      `
+      <div class="section-grid">
+
+        <section class="card">
+          <div class="card-head">
+            <h2>Solicitações recentes</h2>
+            <button
+              class="kpi-link"
+              data-view-link="solicitacoes"
+            >
+              Ver todas
+            </button>
+          </div>
+
+          ${tableRequests(
+            db.requests.slice(0, 6)
+          )}
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2>Precisam de atenção</h2>
+          </div>
+
+          <div class="card-body">
+            <div class="alert-list">
+
+              ${
+                attention.length
+                  ? attention
+                      .map(
+                        r => `
+                        <div
+                          class="alert ${
+                            daysTo(r.prazo) < 0
+                              ? 'danger'
+                              : 'warning'
+                          }"
+                          data-open="${r.id}"
+                        >
+                          <div class="mark"></div>
+
+                          <div>
+                            <strong>
+                              ${r.codigo} · ${r.tipo}
+                            </strong>
+
+                            <small>
+                              ${
+                                daysTo(r.prazo) < 0
+                                  ? 'Atrasado'
+                                  : daysTo(r.prazo) === 0
+                                  ? 'Vence hoje'
+                                  : `Vence em ${daysTo(
+                                      r.prazo
+                                    )} dias`
+                              }
+                              · ${r.advogado}
+                            </small>
+                          </div>
+                        </div>
+                      `
+                      )
+                      .join('')
+                  : `
+                    <div class="empty">
+                      Nenhuma pendência urgente.
+                    </div>
+                  `
+              }
+
+            </div>
+          </div>
+        </section>
+
+      </div>
+      `
+    );
+  },
+
+  solicitacoes() {
+    let rows =
+      db.requests.filter(
+        r =>
+          (
+            !state.query ||
+            `
+              ${r.codigo}
+              ${r.advogado}
+              ${r.cliente}
+              ${r.processo}
+              ${r.tipo}
+            `
+              .toLowerCase()
+              .includes(
+                state.query.toLowerCase()
+              )
+          ) &&
+          (
+            !state.status ||
+            r.status === state.status
+          ) &&
+          (
+            !state.area ||
+            r.area === state.area
+          )
+      );
+
+    return (
+      pageHead(
+        'Solicitações',
+        `${rows.length} demanda(s) encontrada(s).`,
+        '<button class="btn btn-primary" data-new>＋ Nova solicitação</button>'
+      ) +
+
+      `
+      <div class="card filters">
+
+        <div class="field">
+          <label>Pesquisar</label>
+
+          <input
+            class="input"
+            id="q"
+            placeholder="Advogado, cliente, processo ou código..."
+            value="${state.query}"
+          >
+        </div>
+
+        <div class="field small">
+          <label>Status</label>
+
+          <select id="filterStatus">
+            <option value="">Todos</option>
+
+            ${Object.entries(statusLabel)
+              .map(
+                ([k, v]) =>
+                  `<option
+                    value="${k}"
+                    ${
+                      state.status === k
+                        ? 'selected'
+                        : ''
+                    }
+                  >
+                    ${v}
+                  </option>`
+              )
+              .join('')}
+          </select>
+        </div>
+
+        <div class="field small">
+          <label>Área</label>
+
+          <select id="filterArea">
+            <option value="">Todas</option>
+
+            ${
+              [
+                'Previdenciário',
+                'Trabalhista',
+                'Servidor Público',
+                'Cível',
+                'Tributário',
+                'Saúde'
+              ]
+                .map(
+                  v =>
+                    `<option ${
+                      state.area === v
+                        ? 'selected'
+                        : ''
+                    }>${v}</option>`
+                )
+                .join('')
+            }
+          </select>
+        </div>
+
+        <div class="field small">
+          <label>Visualização</label>
+
+          <select id="viewMode">
+            <option value="table">Tabela</option>
+            <option value="kanban">Kanban</option>
+          </select>
+        </div>
+
+      </div>
+
+      <div
+        id="requestList"
+        class="card"
+      >
+        ${tableRequests(rows)}
+      </div>
+      `
+    );
+  },
+
+  advogados() {
+    const names = [
+      ...new Set(
+        db.requests.map(
+          r => r.advogado
+        )
+      )
+    ];
+
+    return (
+      pageHead(
+        'Advogados',
+        'Relacionamento e histórico dos solicitantes.'
+      ) +
+
+      `
+      <div class="grid two-col">
+
+        ${
+          names
+            .map(n => {
+              const rs =
+                db.requests.filter(
+                  r => r.advogado === n
+                );
+
+              const bill =
+                rs.reduce(
+                  (a, r) => a + r.valor,
+                  0
+                );
+
+              const rec =
+                rs.reduce(
+                  (a, r) =>
+                    a + r.recebido,
+                  0
+                );
+
+              return `
+                <div class="card">
+
+                  <div class="profile-card">
+
+                    <div class="avatar">
+                      ${
+                        n
+                          .replace(
+                            /[^A-Za-zÀ-ÿ]/g,
+                            ''
+                          )
+                          .slice(0, 1) ||
+                        'A'
+                      }
+                    </div>
+
+                    <div class="person-meta">
+                      <h3>${n}</h3>
+                      <p>
+                        ${
+                          rs[0]?.origem ||
+                          ''
+                        }
+                        · ${rs.length}
+                        solicitações
+                      </p>
+                    </div>
+
+                  </div>
+
+                  <div class="card-body">
+
+                    <div class="mini-stats">
+
+                      <div class="mini-stat">
+                        <strong>${rs.length}</strong>
+                        <small>Solicitações</small>
+                      </div>
+
+                      <div class="mini-stat">
+                        <strong>${money(
+                          bill
+                        )}</strong>
+                        <small>Faturado</small>
+                      </div>
+
+                      <div class="mini-stat">
+                        <strong>${money(
+                          bill - rec
+                        )}</strong>
+                        <small>A receber</small>
+                      </div>
+
+                    </div>
+
+                  </div>
+
+                </div>
+              `;
+            })
+            .join('')
+        }
+
+      </div>
+      `
+    );
+  },
+
+  clientes() {
+    const names = [
+      ...new Set(
+        db.requests.map(
+          r => r.cliente
+        )
+      )
+    ];
+
+    return (
+      pageHead(
+        'Clientes',
+        'Clientes finais relacionados às demandas.'
+      ) +
+
+      `
+      <div class="card">
+
+        ${
+          names.length
+            ? `
+              <div class="table-wrap">
+                <table>
+
+                  <thead>
+                    <tr>
+                      <th>Cliente</th>
+                      <th>Processo</th>
+                      <th>Solicitações</th>
+                      <th>Valor</th>
+                      <th>Recebido</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+
+                    ${names
+                      .map(n => {
+                        const rs =
+                          db.requests.filter(
+                            r =>
+                              r.cliente === n
+                          );
+
+                        return `
+                          <tr
+                            data-open="${rs[0].id}"
+                          >
+                            <td>
+                              <strong>${n}</strong>
+                            </td>
+
+                            <td>
+                              ${
+                                rs[0]
+                                  .processo ||
+                                '—'
+                              }
+                            </td>
+
+                            <td>
+                              ${rs.length}
+                            </td>
+
+                            <td class="money">
+                              ${money(
+                                rs.reduce(
+                                  (a, r) =>
+                                    a + r.valor,
+                                  0
+                                )
+                              )}
+                            </td>
+
+                            <td class="money">
+                              ${money(
+                                rs.reduce(
+                                  (a, r) =>
+                                    a +
+                                    r.recebido,
+                                  0
+                                )
+                              )}
+                            </td>
+
+                          </tr>
+                        `;
+                      })
+                      .join('')}
+
+                  </tbody>
+
+                </table>
+              </div>
+            `
+            : `
+              <div class="empty">
+                Nenhum cliente.
+              </div>
+            `
+        }
+
+      </div>
+      `
+    );
+  },
+
+  processos() {
+    return (
+      pageHead(
+        'Processos',
+        'Pesquisa e acompanhamento das demandas por processo.'
+      ) +
+
+      `
+      <div class="card filters">
+
+        <div class="field">
+          <label>Pesquisar processo</label>
+
+          <input
+            class="input"
+            id="processSearch"
+            placeholder="Número do processo..."
+          >
+        </div>
+
+      </div>
+
+      <div
+        id="processTable"
+        class="card"
+      >
+        ${processTable('')}
+      </div>
+      `
+    );
+  },
+
+  calculistas() {
+    const names =
+      db.calculistas
+        .filter(c => c.ativo)
+        .map(c => c.nome);
+
+    return (
+      pageHead(
+        'Calculistas',
+        'Distribuição e acompanhamento operacional.'
+      ) +
+
+      `
+      <div class="grid two-col">
+
+        ${
+          names
+            .map(n => {
+              const rs =
+                db.requests.filter(
+                  r =>
+                    r.calculista === n
+                );
+
+              const done =
+                rs.filter(
+                  r =>
+                    r.status ===
+                    'CONCLUÍDO'
+                ).length;
+
+              const active =
+                rs.filter(
+                  r =>
+                    ![
+                      'CONCLUÍDO',
+                      'CANCELADO'
+                    ].includes(r.status)
+                ).length;
+
+              return `
+                <div class="card">
+
+                  <div class="card-body">
+
+                    <div
+                      class="profile-card"
+                      style="padding:0"
+                    >
+
+                      <div class="avatar">
+                        ${n[0]}
+                      </div>
+
+                      <div class="person-meta">
+                        <h3>${n}</h3>
+                        <p>Calculista</p>
+                      </div>
+
+                    </div>
+
+                    <div class="mini-stats">
+
+                      <div class="mini-stat">
+                        <strong>${active}</strong>
+                        <small>Em andamento</small>
+                      </div>
+
+                      <div class="mini-stat">
+                        <strong>${done}</strong>
+                        <small>Concluídos</small>
+                      </div>
+
+                      <div class="mini-stat">
+                        <strong>${rs.length}</strong>
+                        <small>Total</small>
+                      </div>
+
+                    </div>
+
+                  </div>
+
+                </div>
+              `;
+            })
+            .join('')
+        }
+
+      </div>
+      `
+    );
+  },
+
+  financeiro() {
+    const billed =
+      db.requests.reduce(
+        (a, r) => a + r.valor,
+        0
+      );
+
+    const rec =
+      db.requests.reduce(
+        (a, r) => a + r.recebido,
+        0
+      );
+
+    const due =
+      billed - rec;
+
+    return (
+      pageHead(
+        'Financeiro',
+        'Faturamento, recebimentos e contas a receber.'
+      ) +
+
+      `
+      <div class="grid kpi-grid">
+
+        ${kpi(
+          'Faturado',
+          money(billed),
+          'Total das solicitações'
+        )}
+
+        ${kpi(
+          'Recebido',
+          money(rec),
+          'Pagamentos registrados'
+        )}
+
+        ${kpi(
+          'A receber',
+          money(due),
+          'Saldo em aberto'
+        )}
+
+        ${kpi(
+          'Em atraso',
+          money(
+            db.requests
+              .filter(
+                r =>
+                  daysTo(r.prazo) < 0 &&
+                  r.valor > r.recebido
+              )
+              .reduce(
+                (a, r) =>
+                  a +
+                  (r.valor -
+                    r.recebido),
+                0
+              )
+          ),
+          'Prazos vencidos'
+        )}
+
+      </div>
+
+      <div
+        class="card"
+        style="margin-top:16px"
+      >
+
+        <div class="card-head">
+          <h2>Contas a receber</h2>
+        </div>
+
+        <div class="table-wrap">
+
+          <table>
+
+            <thead>
+              <tr>
+                <th>Solicitação</th>
+                <th>Advogado</th>
+                <th>Serviço</th>
+                <th>Cobrado</th>
+                <th>Recebido</th>
+                <th>Saldo</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+
+            <tbody>
+
+              ${
+                db.requests
+                  .filter(
+                    r =>
+                      r.valor >
+                      r.recebido
+                  )
+                  .map(
+                    r => `
+                      <tr data-open="${r.id}">
+
+                        <td>
+                          <strong>
+                            ${r.codigo}
+                          </strong>
+                        </td>
+
+                        <td>
+                          ${r.advogado}
+                        </td>
+
+                        <td>
+                          ${r.tipo}
+                        </td>
+
+                        <td class="money">
+                          ${money(r.valor)}
+                        </td>
+
+                        <td class="money">
+                          ${money(
+                            r.recebido
+                          )}
+                        </td>
+
+                        <td class="money">
+                          ${money(
+                            r.valor -
+                              r.recebido
+                          )}
+                        </td>
+
+                        <td>
+                          <span
+                            class="status ${
+                              daysTo(
+                                r.prazo
+                              ) < 0
+                                ? 'atrasado'
+                                : 'aguardando'
+                            }"
+                          >
+                            ${
+                              daysTo(
+                                r.prazo
+                              ) < 0
+                                ? 'Em atraso'
+                                : 'A receber'
+                            }
+                          </span>
+                        </td>
+
+                      </tr>
+                    `
+                  )
+                  .join('')
+              }
+
+            </tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+      `
+    );
+  },
+
+  relatorios() {
+    const areas = {};
+
+    db.requests.forEach(
+      r =>
+        (areas[r.area] =
+          (areas[r.area] || 0) +
+          1)
+    );
+
+    const orig = {};
+
+    db.requests.forEach(
+      r =>
+        (orig[r.origem] =
+          (orig[r.origem] || 0) +
+          1)
+    );
+
+    return (
+      pageHead(
+        'Relatórios',
+        'Visões operacionais para produção, origem e financeiro.'
+      ) +
+
+      `
+      <div class="grid two-col">
+
+        <section class="card">
+
+          <div class="card-head">
+            <h2>Solicitações por área</h2>
+          </div>
+
+          <div class="card-body">
+
+            ${
+              Object.entries(areas)
+                .map(
+                  ([k, v]) => `
+                    <div
+                      style="
+                        display:flex;
+                        justify-content:space-between;
+                        padding:11px 0;
+                        border-bottom:1px solid var(--line);
+                        font-size:13px
+                      "
+                    >
+                      <span>${k}</span>
+                      <strong>${v}</strong>
+                    </div>
+                  `
+                )
+                .join('')
+            }
+
+          </div>
+
+        </section>
+
+        <section class="card">
+
+          <div class="card-head">
+            <h2>Origem das solicitações</h2>
+          </div>
+
+          <div class="card-body">
+
+            ${
+              Object.entries(orig)
+                .map(
+                  ([k, v]) => `
+                    <div
+                      style="
+                        display:flex;
+                        justify-content:space-between;
+                        padding:11px 0;
+                        border-bottom:1px solid var(--line);
+                        font-size:13px
+                      "
+                    >
+                      <span>${k}</span>
+                      <strong>${v}</strong>
+                    </div>
+                  `
+                )
+                .join('')
+            }
+
+          </div>
+
+        </section>
+
+      </div>
+
+      <div
+        class="notice"
+        style="margin-top:16px"
+      >
+        Os gráficos avançados, exportação e indicadores históricos serão ligados ao Supabase na próxima etapa.
+      </div>
+      `
+    );
+  },
+
+  configuracoes() {
+    return (
+      pageHead(
+        'Configurações',
+        'Cadastros e integrações do Gestão Computum.'
+      ) +
+
+      `
+      <div class="grid two-col">
+
+        <section class="card">
+
+          <div class="card-head">
+            <h2>Sistemas especializados</h2>
+
+            <button
+              class="btn"
+              data-system
+            >
+              ＋ Adicionar
+            </button>
+          </div>
+
+          <div class="card-body">
+
+            <div class="alert-list">
+
+              <div class="alert">
+                <div class="mark"></div>
+
+                <div>
+                  <strong>
+                    Abono Computum
+                  </strong>
+
+                  <small>
+                    https://abono.computum.com.br
+                  </small>
+                </div>
+              </div>
+
+              <div class="alert">
+                <div class="mark"></div>
+
+                <div>
+                  <strong>
+                    Diferenças Computum
+                  </strong>
+
+                  <small>
+                    https://diferencas.computum.com.br
+                  </small>
+                </div>
+              </div>
+
+              <div class="alert">
+                <div class="mark"></div>
+
+                <div>
+                  <strong>
+                    Saúde Computum
+                  </strong>
+
+                  <small>
+                    https://saude.computum.com.br
+                  </small>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+
+        </section>
+
+        <section class="card">
+
+          <div class="card-head">
+            <h2>Integrações</h2>
+          </div>
+
+          <div class="card-body">
+
+            <div class="notice">
+              <strong>Supabase:</strong>
+              aguardando URL e chave pública do projeto.
+            </div>
+
+            <div
+              class="notice"
+              style="margin-top:10px"
+            >
+              <strong>Google Drive:</strong>
+              integração preparada conceitualmente; requer OAuth/configuração da aplicação.
+            </div>
+
+          </div>
+
+        </section>
+
+      </div>
+      `
+    );
+  }
 };
 
-function openNew(){ $('#modalRoot').innerHTML=newModal(); const area=$('#newArea'), tipo=$('#newTipo'); area.addEventListener('change',()=>{tipo.innerHTML='<option value="">Selecione</option>'+(serviceMap[area.value]||[]).map(x=>`<option>${x}</option>`).join('')}); $('#requestModal').addEventListener('click',e=>{if(e.target.id==='requestModal'||e.target.matches('[data-close]')) closeModal()}); $('#requestForm').addEventListener('submit',createRequest); }
-function closeModal(){ $('#modalRoot').innerHTML=''; }
+function processTable(q) {
+  const seen = new Map();
+
+  db.requests.forEach(r => {
+    if (
+      q &&
+      !r.processo
+        .toLowerCase()
+        .includes(
+          q.toLowerCase()
+        )
+    ) {
+      return;
+    }
+
+    if (!seen.has(r.processo)) {
+      seen.set(
+        r.processo,
+        r
+      );
+    }
+  });
+
+  const rows = [
+    ...seen.values()
+  ];
+
+  return rows.length
+    ? `
+      <div class="table-wrap">
+
+        <table>
+
+          <thead>
+            <tr>
+              <th>Processo</th>
+              <th>Cliente</th>
+              <th>Advogado</th>
+              <th>Último serviço</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+
+          <tbody>
+
+            ${
+              rows
+                .map(
+                  r => `
+                    <tr data-open="${r.id}">
+
+                      <td>
+                        <strong>
+                          ${r.processo}
+                        </strong>
+                      </td>
+
+                      <td>
+                        ${r.cliente}
+                      </td>
+
+                      <td>
+                        ${r.advogado}
+                      </td>
+
+                      <td>
+                        ${r.tipo}
+                      </td>
+
+                      <td>
+                        <span
+                          class="status ${statusClass(
+                            r.status
+                          )}"
+                        >
+                          ${
+                            statusLabel[
+                              r.status
+                            ]
+                          }
+                        </span>
+                      </td>
+
+                    </tr>
+                  `
+                )
+                .join('')
+            }
+
+          </tbody>
+
+        </table>
+
+      </div>
+    `
+    : `
+      <div class="empty">
+        Nenhum processo encontrado.
+      </div>
+    `;
+}
+
+function newModal() {
+  return `
+    <div
+      class="modal-backdrop"
+      id="requestModal"
+    >
+
+      <div class="modal">
+
+        <div class="modal-head">
+
+          <h2>
+            Nova solicitação
+          </h2>
+
+          <button
+            class="close"
+            data-close
+          >
+            ×
+          </button>
+
+        </div>
+
+        <form id="requestForm">
+
+          <div class="modal-body">
+
+            <div
+              class="notice"
+              style="margin-bottom:16px"
+            >
+              Cadastro rápido: os dados podem ser complementados depois. O upload para o Google Drive será conectado quando a integração OAuth estiver configurada.
+            </div>
+
+            <div class="form-grid">
+
+              <div class="field">
+                <label>
+                  Advogado *
+                </label>
+
+                <input
+                  required
+                  name="advogado"
+                  class="input"
+                  placeholder="Nome do advogado"
+                >
+              </div>
+
+              <div class="field">
+                <label>
+                  Origem
+                </label>
+
+                <select name="origem">
+                  <option>Indicação</option>
+                  <option>Instagram</option>
+                  <option>Site</option>
+                  <option>WhatsApp</option>
+                  <option>Cliente antigo</option>
+                  <option>LinkedIn</option>
+                  <option>Outro</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label>
+                  Cliente *
+                </label>
+
+                <input
+                  required
+                  name="cliente"
+                  class="input"
+                  placeholder="Nome do cliente"
+                >
+              </div>
+
+              <div class="field">
+                <label>
+                  CPF
+                </label>
+
+                <input
+                  name="cpf"
+                  class="input"
+                  placeholder="Opcional"
+                >
+              </div>
+
+              <div class="field">
+                <label>
+                  Número do processo
+                </label>
+
+                <input
+                  name="processo"
+                  class="input"
+                  placeholder="0000000-00.0000.0.00.0000"
+                >
+              </div>
+
+              <div class="field">
+                <label>
+                  Prazo
+                </label>
+
+                <input
+                  type="date"
+                  name="prazo"
+                  class="input"
+                >
+              </div>
+
+              <div class="field">
+                <label>
+                  Área *
+                </label>
+
+                <select
+                  required
+                  name="area"
+                  id="newArea"
+                >
+                  <option value="">
+                    Selecione
+                  </option>
+
+                  <option>
+                    Previdenciário
+                  </option>
+
+                  <option>
+                    Trabalhista
+                  </option>
+
+                  <option>
+                    Servidor Público
+                  </option>
+
+                  <option>
+                    Cível
+                  </option>
+
+                  <option>
+                    Tributário
+                  </option>
+
+                  <option>
+                    Saúde
+                  </option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label>
+                  Tipo de serviço *
+                </label>
+
+                <select
+                  required
+                  name="tipo"
+                  id="newTipo"
+                >
+                  <option value="">
+                    Selecione a área primeiro
+                  </option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label>
+                  Calculista
+                </label>
+
+                <select name="calculista">
+
+                  <option value="">
+                    Não atribuído
+                  </option>
+
+                  ${db.calculistas
+                    .filter(c => c.ativo)
+                    .map(
+                      c =>
+                        `<option value="${c.nome}">
+                          ${c.nome}
+                        </option>`
+                    )
+                    .join('')}
+
+                </select>
+              </div>
+
+              <div class="field">
+                <label>
+                  Valor cobrado
+                </label>
+
+                <input
+                  name="valor"
+                  class="input"
+                  inputmode="decimal"
+                  placeholder="0,00"
+                >
+              </div>
+
+              <div class="field">
+                <label>
+                  Prioridade
+                </label>
+
+                <select name="prioridade">
+                  <option>Normal</option>
+                  <option>Alta</option>
+                  <option>Urgente</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label>
+                  Tipo de entrega
+                </label>
+
+                <select name="entrega">
+                  <option>
+                    Cálculo
+                  </option>
+
+                  <option>
+                    Cálculo + parecer
+                  </option>
+
+                  <option>
+                    Apenas parecer
+                  </option>
+
+                  <option>
+                    Conferência
+                  </option>
+                </select>
+              </div>
+
+              <div class="field full">
+                <label>
+                  Texto da solicitação
+                </label>
+
+                <textarea
+                  name="descricao"
+                  rows="4"
+                  placeholder="Cole aqui a mensagem ou descreva o que o advogado solicitou..."
+                ></textarea>
+              </div>
+
+              <div class="field full">
+                <label>
+                  Documento inicial
+                </label>
+
+                <input
+                  type="file"
+                  name="arquivo"
+                  class="input"
+                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"
+                >
+              </div>
+
+            </div>
+
+          </div>
+
+          <div class="modal-foot">
+
+            <button
+              type="button"
+              class="btn"
+              data-close
+            >
+              Cancelar
+            </button>
+
+            <button
+              type="submit"
+              class="btn btn-primary"
+            >
+              Criar solicitação
+            </button>
+
+          </div>
+
+        </form>
+
+      </div>
+
+    </div>
+  `;
+}
+
+const serviceMap = {
+  'Previdenciário': [
+    'Liquidação de sentença',
+    'Revisão de RMI',
+    'Atualização',
+    'LOAS',
+    'Outro'
+  ],
+
+  'Trabalhista': [
+    'Liquidação',
+    'Dano material',
+    'Dano moral',
+    'Atualização',
+    'Outro'
+  ],
+
+  'Servidor Público': [
+    'Abono de Permanência',
+    'Verbas remuneratórias',
+    '13º salário',
+    'Férias',
+    'Outro'
+  ],
+
+  'Cível': [
+    'Dano material',
+    'Dano moral',
+    'Liquidação',
+    'Atualização',
+    'Outro'
+  ],
+
+  'Tributário': [
+    'Diferenças',
+    'Atualização',
+    'Liquidação',
+    'Outro'
+  ],
+
+  'Saúde': [
+    'Plano de Saúde',
+    'Dano material',
+    'Dano moral',
+    'Liquidação',
+    'Outro'
+  ]
+};
+
+function openNew() {
+  $('#modalRoot').innerHTML =
+    newModal();
+
+  const area =
+    $('#newArea');
+
+  const tipo =
+    $('#newTipo');
+
+  area.addEventListener(
+    'change',
+    () => {
+      tipo.innerHTML =
+        '<option value="">Selecione</option>' +
+        (
+          serviceMap[
+            area.value
+          ] || []
+        )
+          .map(
+            x =>
+              `<option>${x}</option>`
+          )
+          .join('');
+    }
+  );
+
+  $('#requestModal')
+    .addEventListener(
+      'click',
+      e => {
+        if (
+          e.target.id ===
+            'requestModal' ||
+          e.target.matches(
+            '[data-close]'
+          )
+        ) {
+          closeModal();
+        }
+      }
+    );
+
+  $('#requestForm')
+    .addEventListener(
+      'submit',
+      createRequest
+    );
+}
+
+function closeModal() {
+  $('#modalRoot').innerHTML = '';
+}
+
 async function createRequest(e) {
   e.preventDefault();
 
-  const f = new FormData(e.target);
-  const submitButton = e.target.querySelector('button[type="submit"]');
+  const f =
+    new FormData(e.target);
+
+  const submitButton =
+    e.target.querySelector(
+      'button[type="submit"]'
+    );
 
   try {
+
     submitButton.disabled = true;
-    submitButton.textContent = 'Salvando...';
+    submitButton.textContent =
+      'Salvando...';
 
-    const advogadoNome = String(f.get('advogado') || '').trim();
-    const clienteNome = String(f.get('cliente') || '').trim();
-    const cpf = String(f.get('cpf') || '').trim();
-    const processoNumero = String(f.get('processo') || '').trim();
-    const areaNome = String(f.get('area') || '').trim();
-    const tipoNome = String(f.get('tipo') || '').trim();
-    const origem = String(f.get('origem') || '').trim();
-    const prioridadeLabel = String(f.get('prioridade') || 'Normal').trim();
-    const calculistaNome = String(f.get('calculista') || '').trim();
-    const entregaLabel = String(f.get('entrega') || 'Cálculo').trim();
-    const descricao = String(f.get('descricao') || '').trim();
-    const prazo = String(f.get('prazo') || '').trim();
-    const valor = parseMoney(f.get('valor'));
+    const advogadoNome =
+      String(
+        f.get('advogado') || ''
+      ).trim();
 
-    if (!advogadoNome || !clienteNome || !areaNome || !tipoNome) {
-      throw new Error('Preencha os campos obrigatórios.');
+    const clienteNome =
+      String(
+        f.get('cliente') || ''
+      ).trim();
+
+    const cpf =
+      String(
+        f.get('cpf') || ''
+      ).trim();
+
+    const processoNumero =
+      String(
+        f.get('processo') || ''
+      ).trim();
+
+    const areaNome =
+      String(
+        f.get('area') || ''
+      ).trim();
+
+    const tipoNome =
+      String(
+        f.get('tipo') || ''
+      ).trim();
+
+    const origem =
+      String(
+        f.get('origem') || ''
+      ).trim();
+
+    const prioridadeLabel =
+      String(
+        f.get('prioridade') ||
+          'Normal'
+      ).trim();
+
+    const calculistaNome =
+      String(
+        f.get('calculista') || ''
+      ).trim();
+
+    const entregaLabel =
+      String(
+        f.get('entrega') ||
+          'Cálculo'
+      ).trim();
+
+    const descricao =
+      String(
+        f.get('descricao') || ''
+      ).trim();
+
+    const prazo =
+      String(
+        f.get('prazo') || ''
+      ).trim();
+
+    const valor =
+      parseMoney(
+        f.get('valor')
+      );
+
+    if (
+      !advogadoNome ||
+      !clienteNome ||
+      !areaNome ||
+      !tipoNome
+    ) {
+      throw new Error(
+        'Preencha os campos obrigatórios.'
+      );
     }
 
-    /* =====================================================
-       1. ADVOGADO
-       ===================================================== */
+    /*
+     * 1. LOCALIZA / CRIA O ADVOGADO
+     */
 
     let advogado;
 
-    const advogadoBusca = await supabaseClient
-      .from('advogados')
-      .select('id, nome, origem')
-      .ilike('nome', advogadoNome)
-      .limit(1)
-      .maybeSingle();
+    const advogadoBusca =
+      await supabaseClient
+        .from('advogados')
+        .select(
+          'id, nome, origem'
+        )
+        .ilike(
+          'nome',
+          advogadoNome
+        )
+        .limit(1)
+        .maybeSingle();
 
     if (advogadoBusca.error) {
       throw advogadoBusca.error;
     }
 
-    advogado = advogadoBusca.data;
+    advogado =
+      advogadoBusca.data;
 
     if (!advogado) {
-      const novoAdvogado = await supabaseClient
-        .from('advogados')
-        .insert({
-          nome: advogadoNome,
-          origem: origem || null
-        })
-        .select('id, nome, origem')
-        .single();
+
+      const novoAdvogado =
+        await supabaseClient
+          .from('advogados')
+          .insert({
+            nome:
+              advogadoNome,
+            origem:
+              origem || null
+          })
+          .select(
+            'id, nome, origem'
+          )
+          .single();
 
       if (novoAdvogado.error) {
         throw novoAdvogado.error;
       }
 
-      advogado = novoAdvogado.data;
+      advogado =
+        novoAdvogado.data;
     }
 
-    /* =====================================================
-       2. CLIENTE
-       ===================================================== */
+    /*
+     * 2. LOCALIZA / CRIA O CLIENTE
+     */
 
     let cliente = null;
 
     if (cpf) {
-      const clienteCpf = await supabaseClient
-        .from('clientes')
-        .select('id, nome, cpf')
-        .eq('cpf', cpf)
-        .limit(1)
-        .maybeSingle();
+
+      const clienteCpf =
+        await supabaseClient
+          .from('clientes')
+          .select(
+            'id, nome, cpf'
+          )
+          .eq(
+            'cpf',
+            cpf
+          )
+          .limit(1)
+          .maybeSingle();
 
       if (clienteCpf.error) {
         throw clienteCpf.error;
       }
 
-      cliente = clienteCpf.data;
+      cliente =
+        clienteCpf.data;
     }
 
     if (!cliente) {
-      const clienteNomeBusca = await supabaseClient
-        .from('clientes')
-        .select('id, nome, cpf')
-        .ilike('nome', clienteNome)
-        .limit(1)
-        .maybeSingle();
+
+      const clienteNomeBusca =
+        await supabaseClient
+          .from('clientes')
+          .select(
+            'id, nome, cpf'
+          )
+          .ilike(
+            'nome',
+            clienteNome
+          )
+          .limit(1)
+          .maybeSingle();
 
       if (clienteNomeBusca.error) {
         throw clienteNomeBusca.error;
       }
 
-      cliente = clienteNomeBusca.data;
+      cliente =
+        clienteNomeBusca.data;
     }
 
     if (!cliente) {
-      const novoCliente = await supabaseClient
-        .from('clientes')
-        .insert({
-          nome: clienteNome,
-          cpf: cpf || null
-        })
-        .select('id, nome, cpf')
-        .single();
+
+      const novoCliente =
+        await supabaseClient
+          .from('clientes')
+          .insert({
+            nome:
+              clienteNome,
+            cpf:
+              cpf || null
+          })
+          .select(
+            'id, nome, cpf'
+          )
+          .single();
 
       if (novoCliente.error) {
         throw novoCliente.error;
       }
 
-      cliente = novoCliente.data;
+      cliente =
+        novoCliente.data;
     }
 
-    /* =====================================================
-       3. PROCESSO
-       ===================================================== */
+    /*
+     * 3. LOCALIZA / CRIA O PROCESSO
+     */
 
     let processo = null;
 
     if (processoNumero) {
-      const processoBusca = await supabaseClient
-        .from('processos')
-        .select('id, numero_processo, cliente_id')
-        .eq('numero_processo', processoNumero)
-        .limit(1)
-        .maybeSingle();
+
+      const processoBusca =
+        await supabaseClient
+          .from('processos')
+          .select(
+            'id, numero_processo, cliente_id'
+          )
+          .eq(
+            'numero_processo',
+            processoNumero
+          )
+          .limit(1)
+          .maybeSingle();
 
       if (processoBusca.error) {
         throw processoBusca.error;
       }
 
-      processo = processoBusca.data;
+      processo =
+        processoBusca.data;
 
       if (!processo) {
-        const novoProcesso = await supabaseClient
-          .from('processos')
-          .insert({
-            numero_processo: processoNumero,
-            cliente_id: cliente.id
-          })
-          .select('id, numero_processo, cliente_id')
-          .single();
+
+        const novoProcesso =
+          await supabaseClient
+            .from('processos')
+            .insert({
+              numero_processo:
+                processoNumero,
+              cliente_id:
+                cliente.id
+            })
+            .select(
+              'id, numero_processo, cliente_id'
+            )
+            .single();
 
         if (novoProcesso.error) {
           throw novoProcesso.error;
         }
 
-        processo = novoProcesso.data;
+        processo =
+          novoProcesso.data;
       }
     }
 
-    /* =====================================================
-       4. ÁREA
-       ===================================================== */
+    /*
+     * 4. LOCALIZA A ÁREA
+     */
 
-    const areaResult = await supabaseClient
-      .from('areas_servico')
-      .select('id, nome')
-      .eq('nome', areaNome)
-      .limit(1)
-      .maybeSingle();
+    const areaResult =
+      await supabaseClient
+        .from('areas_servico')
+        .select(
+          'id, nome'
+        )
+        .eq(
+          'nome',
+          areaNome
+        )
+        .limit(1)
+        .maybeSingle();
 
     if (areaResult.error) {
       throw areaResult.error;
@@ -752,100 +2525,156 @@ async function createRequest(e) {
       );
     }
 
-    const area = areaResult.data;
+    const area =
+      areaResult.data;
 
-    /* =====================================================
-       5. TIPO DE SERVIÇO
-       ===================================================== */
+    /*
+     * 5. LOCALIZA / CRIA O TIPO DE SERVIÇO
+     */
 
-    const tipoResult = await supabaseClient
-      .from('tipos_servico')
-      .select('id, nome, area_id')
-      .eq('area_id', area.id)
-      .eq('nome', tipoNome)
-      .limit(1)
-      .maybeSingle();
+    const tipoResult =
+      await supabaseClient
+        .from('tipos_servico')
+        .select(
+          'id, nome, area_id'
+        )
+        .eq(
+          'area_id',
+          area.id
+        )
+        .eq(
+          'nome',
+          tipoNome
+        )
+        .limit(1)
+        .maybeSingle();
 
     if (tipoResult.error) {
       throw tipoResult.error;
     }
 
-    let tipo = tipoResult.data;
+    let tipo =
+      tipoResult.data;
 
     if (!tipo) {
-      const novoTipo = await supabaseClient
-        .from('tipos_servico')
-        .insert({
-          area_id: area.id,
-          nome: tipoNome
-        })
-        .select('id, nome, area_id')
-        .single();
+
+      const novoTipo =
+        await supabaseClient
+          .from('tipos_servico')
+          .insert({
+            area_id:
+              area.id,
+            nome:
+              tipoNome
+          })
+          .select(
+            'id, nome, area_id'
+          )
+          .single();
 
       if (novoTipo.error) {
         throw novoTipo.error;
       }
 
-      tipo = novoTipo.data;
+      tipo =
+        novoTipo.data;
     }
 
-    /* =====================================================
-       6. CALCULISTA
-       ===================================================== */
+    /*
+     * 6. LOCALIZA O CALCULISTA
+     *
+     * Calculistas não possuem login.
+     * Eles ficam na tabela public.calculistas.
+     */
 
     let calculistaId = null;
 
     if (calculistaNome) {
-      const calculistaResult = await supabaseClient
-        .from('usuarios')
-        .select('id, nome, perfil, ativo')
-        .ilike('nome', calculistaNome)
-        .eq('ativo', true)
-        .limit(1)
-        .maybeSingle();
+
+      const calculistaResult =
+        await supabaseClient
+          .from('calculistas')
+          .select(
+            'id, nome, ativo'
+          )
+          .ilike(
+            'nome',
+            calculistaNome
+          )
+          .eq(
+            'ativo',
+            true
+          )
+          .limit(1)
+          .maybeSingle();
 
       if (calculistaResult.error) {
         throw calculistaResult.error;
       }
 
-      if (calculistaResult.data) {
-        calculistaId = calculistaResult.data.id;
+      if (
+        calculistaResult.data
+      ) {
+        calculistaId =
+          calculistaResult.data.id;
       }
     }
 
-    /* =====================================================
-       7. NORMALIZAÇÃO
-       ===================================================== */
+    /*
+     * 7. CONVERTE VALORES DO FORMULÁRIO
+     */
 
     const prioridadeMap = {
-      'Normal': 'normal',
-      'Alta': 'alta',
-      'Urgente': 'urgente'
+      Normal: 'normal',
+      Alta: 'alta',
+      Urgente: 'urgente'
     };
 
     const entregaMap = {
-      'Cálculo': 'calculo',
-      'Cálculo + parecer': 'calculo_parecer',
-      'Apenas parecer': 'parecer',
-      'Conferência': 'conferencia'
+      'Cálculo':
+        'calculo',
+
+      'Cálculo + parecer':
+        'calculo_parecer',
+
+      'Apenas parecer':
+        'parecer',
+
+      'Conferência':
+        'conferencia'
     };
 
     const prioridade =
-      prioridadeMap[prioridadeLabel] || 'normal';
+      prioridadeMap[
+        prioridadeLabel
+      ] || 'normal';
 
     const tipoEntrega =
-      entregaMap[entregaLabel] || 'calculo';
+      entregaMap[
+        entregaLabel
+      ] || 'calculo';
 
-    /* =====================================================
-       8. GERAÇÃO DO CÓDIGO
-       ===================================================== */
+    /*
+     * 8. GERA O CÓDIGO DA SOLICITAÇÃO
+     */
 
-    const { data: ultimaSolicitacao, error: ultimaError } =
+    const {
+      data: ultimaSolicitacao,
+      error: ultimaError
+    } =
       await supabaseClient
         .from('solicitacoes')
         .select('codigo')
-        .like('codigo', `CJ-${today.getFullYear()}-%`)
-        .order('created_at', { ascending: false })
+        .like(
+          'codigo',
+          `CJ-${today.getFullYear()}-%`
+        )
+        .order(
+          'created_at',
+          {
+            ascending: false
+          }
+        )
         .limit(1)
         .maybeSingle();
 
@@ -855,50 +2684,85 @@ async function createRequest(e) {
 
     let proximoNumero = 1;
 
-    if (ultimaSolicitacao?.codigo) {
+    if (
+      ultimaSolicitacao?.codigo
+    ) {
+
       const partes =
-        ultimaSolicitacao.codigo.split('-');
+        ultimaSolicitacao.codigo
+          .split('-');
 
       const ultimoNumero =
-        Number(partes[2]);
+        Number(
+          partes[2]
+        );
 
-      if (Number.isFinite(ultimoNumero)) {
-        proximoNumero = ultimoNumero + 1;
+      if (
+        Number.isFinite(
+          ultimoNumero
+        )
+      ) {
+        proximoNumero =
+          ultimoNumero + 1;
       }
     }
 
     const codigo =
-      `CJ-${today.getFullYear()}-${String(proximoNumero).padStart(5, '0')}`;
+      `CJ-${today.getFullYear()}-${String(
+        proximoNumero
+      ).padStart(5, '0')}`;
 
-    /* =====================================================
-       9. CRIA A SOLICITAÇÃO
-       ===================================================== */
+    /*
+     * 9. CRIA A SOLICITAÇÃO NO SUPABASE
+     */
 
-    const solicitacaoResult = await supabaseClient
-      .from('solicitacoes')
-      .insert({
-        codigo,
-        advogado_id: advogado.id,
-        cliente_id: cliente.id,
-        processo_id: processo?.id || null,
-        area_id: area.id,
-        tipo_servico_id: tipo.id,
-        descricao: descricao || null,
-        prazo: prazo || null,
-        status: 'NOVO',
-        prioridade,
-        calculista_id: calculistaId,
-        revisor_id: null,
-        tipo_entrega: tipoEntrega,
-        valor_cobrado: valor,
-        desconto: 0,
-        valor_final: valor,
-        origem: origem || null,
-        cliente_antigo: origem === 'Cliente antigo',
-        created_by: currentUser?.id || null
-      })
-      .select('id, codigo')
-      .single();
+    const solicitacaoResult =
+      await supabaseClient
+        .from('solicitacoes')
+        .insert({
+          codigo,
+          advogado_id:
+            advogado.id,
+          cliente_id:
+            cliente.id,
+          processo_id:
+            processo?.id || null,
+          area_id:
+            area.id,
+          tipo_servico_id:
+            tipo.id,
+          descricao:
+            descricao || null,
+          prazo:
+            prazo || null,
+          status:
+            'NOVO',
+          prioridade,
+          calculista_id:
+            calculistaId,
+          revisor_id:
+            null,
+          tipo_entrega:
+            tipoEntrega,
+          valor_cobrado:
+            valor,
+          desconto:
+            0,
+          valor_final:
+            valor,
+          origem:
+            origem || null,
+          cliente_antigo:
+            origem ===
+            'Cliente antigo',
+          created_by:
+            currentUser?.id ||
+            null
+        })
+        .select(
+          'id, codigo'
+        )
+        .single();
 
     if (solicitacaoResult.error) {
       throw solicitacaoResult.error;
@@ -907,18 +2771,26 @@ async function createRequest(e) {
     const solicitacao =
       solicitacaoResult.data;
 
-    /* =====================================================
-       10. HISTÓRICO
-       ===================================================== */
+    /*
+     * 10. REGISTRA O PRIMEIRO EVENTO NO HISTÓRICO
+     */
 
-    const historicoResult = await supabaseClient
-      .from('historico_solicitacao')
-      .insert({
-        solicitacao_id: solicitacao.id,
-        usuario_id: currentUser?.id || null,
-        tipo_evento: 'CRIACAO',
-        descricao: 'Solicitação criada.'
-      });
+    const historicoResult =
+      await supabaseClient
+        .from(
+          'historico_solicitacao'
+        )
+        .insert({
+          solicitacao_id:
+            solicitacao.id,
+          usuario_id:
+            currentUser?.id ||
+            null,
+          tipo_evento:
+            'CRIACAO',
+          descricao:
+            'Solicitação criada.'
+        });
 
     if (historicoResult.error) {
       console.error(
@@ -927,9 +2799,9 @@ async function createRequest(e) {
       );
     }
 
-    /* =====================================================
-       11. RECARREGA OS DADOS
-       ===================================================== */
+    /*
+     * 11. RECARREGA OS DADOS DO SUPABASE
+     */
 
     const dadosCarregados =
       await carregarSolicitacoes();
@@ -940,13 +2812,14 @@ async function createRequest(e) {
       );
     }
 
-    /* =====================================================
-       12. FINALIZA
-       ===================================================== */
+    /*
+     * 12. FINALIZA
+     */
 
     closeModal();
 
-    state.view = 'solicitacoes';
+    state.view =
+      'solicitacoes';
 
     render();
 
@@ -972,44 +2845,641 @@ async function createRequest(e) {
       );
 
     if (button) {
-      button.disabled = false;
+      button.disabled =
+        false;
+
       button.textContent =
         'Criar solicitação';
     }
   }
 }
-function parseMoney(v){return Number(String(v||'').replace(/\./g,'').replace(',','.'))||0}
-function serviceSystem(tipo){if(tipo==='Abono de Permanência')return 'Abono Computum';if(tipo==='Plano de Saúde')return 'Saúde Computum';if(tipo==='Diferenças')return 'Diferenças Computum';return '';}
 
-function openDetail(id){ const r=db.requests.find(x=>x.id===id); if(!r)return; state.selected=id; $('#drawerRoot').innerHTML=`<div class="drawer-backdrop" id="drawerBackdrop"><aside class="drawer"><div class="drawer-head"><div><strong>${r.codigo}</strong><div class="muted" style="font-size:11px;margin-top:3px">Detalhes da solicitação</div></div><button class="close" data-drawer-close>×</button></div><div class="drawer-body"><h2 class="detail-title">${r.tipo}</h2><div class="detail-meta"><span class="status ${statusClass(r.status)}">${statusLabel[r.status]}</span><span class="status ${r.prioridade==='Urgente'?'atrasado':'novo'}">${r.prioridade}</span></div><div class="detail-grid"><div class="detail-box"><small>Advogado</small><strong>${r.advogado}</strong></div><div class="detail-box"><small>Cliente</small><strong>${r.cliente}</strong></div><div class="detail-box"><small>Processo</small><strong>${r.processo}</strong></div><div class="detail-box"><small>Prazo</small><strong>${fmtDate(r.prazo)}</strong></div><div class="detail-box"><small>Calculista</small><strong>${r.calculista||'Não atribuído'}</strong></div><div class="detail-box"><small>Valor</small><strong>${money(r.valor)}</strong></div><div class="detail-box"><small>Recebido</small><strong>${money(r.recebido)}</strong></div><div class="detail-box"><small>Sistema</small><strong>${r.sistema||'Nenhum vinculado'}</strong></div></div><div class="card" style="margin-top:16px"><div class="card-head"><h2>Solicitação</h2></div><div class="card-body"><div style="font-size:13px;line-height:1.65">${r.descricao||'Sem descrição.'}</div></div></div><div class="card" style="margin-top:16px"><div class="card-head"><h2>Google Drive</h2><button class="btn" data-drive>📁 Abrir pasta</button></div><div class="card-body"><div class="notice">A pasta privada do Google Drive será vinculada nesta etapa da integração.</div></div></div><div class="card" style="margin-top:16px"><div class="card-head"><h2>Histórico</h2></div><div class="card-body"><div class="timeline">${(r.historico||[]).map(e=>`<div class="event"><strong>${e[1]}</strong><small>${e[0]}</small></div>`).join('')}</div></div></div></div></aside></div>`; $('#drawerBackdrop').addEventListener('click',e=>{if(e.target.id==='drawerBackdrop'||e.target.matches('[data-drawer-close]'))closeDrawer();if(e.target.matches('[data-drive]'))showToast('Integração Google Drive ainda não configurada.')}); }
-function closeDrawer(){ $('#drawerRoot').innerHTML=''; }
-
-function bindView(){
-  $$('[data-view]').forEach(b=>b.addEventListener('click',()=>nav(b.dataset.view)));
-  $$('[data-view-link]').forEach(b=>b.addEventListener('click',()=>nav(b.dataset.viewLink)));
-  $$('[data-new]').forEach(b=>b.addEventListener('click',openNew));
-  $$('[data-open]').forEach(el=>el.addEventListener('click',()=>openDetail(el.dataset.open)));
-  const q=$('#q'); if(q) q.addEventListener('input',()=>{state.query=q.value;render()});
-  const fs=$('#filterStatus'); if(fs)fs.addEventListener('change',()=>{state.status=fs.value;render()});
-  const fa=$('#filterArea'); if(fa)fa.addEventListener('change',()=>{state.area=fa.value;render()});
-  const ps=$('#processSearch'); if(ps)ps.addEventListener('input',()=>{$('#processTable').innerHTML=processTable(ps.value);$$('[data-open]').forEach(el=>el.addEventListener('click',()=>openDetail(el.dataset.open))) });
-  const vm=$('#viewMode'); if(vm)vm.addEventListener('change',()=>{ if(vm.value==='kanban') $('#requestList').innerHTML=kanban(); else {let rows=db.requests.filter(r=>(!state.query||`${r.codigo} ${r.advogado} ${r.cliente}`.toLowerCase().includes(state.query.toLowerCase())) && (!state.status||r.status===state.status)&&(!state.area||r.area===state.area));$('#requestList').innerHTML=tableRequests(rows);$$('[data-open]').forEach(el=>el.addEventListener('click',()=>openDetail(el.dataset.open)));} });
-  $$('[data-system]').forEach(b=>b.addEventListener('click',()=>showToast('Cadastro de sistemas será conectado ao Supabase.')));
+function parseMoney(v) {
+  return Number(
+    String(v || '')
+      .replace(/\./g, '')
+      .replace(',', '.')
+  ) || 0;
 }
 
-function kanban(){const cols=[['NOVO','Novas'],['EM_CÁLCULO','Em cálculo'],['EM_REVISÃO','Em revisão'],['ENVIADO','Enviadas']];return `<div class="kanban">${cols.map(([s,l])=>`<div class="kanban-col"><div class="kanban-head"><span>${l}</span><span>${db.requests.filter(r=>r.status===s).length}</span></div>${db.requests.filter(r=>r.status===s).map(r=>`<div class="kanban-card" data-open="${r.id}"><strong>${r.codigo}</strong><small>${r.tipo}<br>${r.advogado}<br>Prazo: ${fmtDate(r.prazo)}</small></div>`).join('')}</div>`).join('')}</div>`}
+function serviceSystem(tipo) {
+  if (
+    tipo ===
+    'Abono de Permanência'
+  ) {
+    return 'Abono Computum';
+  }
 
-$('#menuBtn').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
-$$('[data-view]').forEach(b=>b.addEventListener('click',()=>nav(b.dataset.view)));
+  if (
+    tipo ===
+    'Plano de Saúde'
+  ) {
+    return 'Saúde Computum';
+  }
+
+  if (
+    tipo ===
+    'Diferenças'
+  ) {
+    return 'Diferenças Computum';
+  }
+
+  return '';
+}
+
+function openDetail(id) {
+
+  const r =
+    db.requests.find(
+      x => x.id === id
+    );
+
+  if (!r) return;
+
+  state.selected =
+    id;
+
+  $('#drawerRoot').innerHTML = `
+    <div
+      class="drawer-backdrop"
+      id="drawerBackdrop"
+    >
+
+      <aside class="drawer">
+
+        <div class="drawer-head">
+
+          <div>
+
+            <strong>
+              ${r.codigo}
+            </strong>
+
+            <div
+              class="muted"
+              style="
+                font-size:11px;
+                margin-top:3px
+              "
+            >
+              Detalhes da solicitação
+            </div>
+
+          </div>
+
+          <button
+            class="close"
+            data-drawer-close
+          >
+            ×
+          </button>
+
+        </div>
+
+        <div class="drawer-body">
+
+          <h2 class="detail-title">
+            ${r.tipo}
+          </h2>
+
+          <div class="detail-meta">
+
+            <span
+              class="status ${statusClass(
+                r.status
+              )}"
+            >
+              ${
+                statusLabel[
+                  r.status
+                ]
+              }
+            </span>
+
+            <span
+              class="status ${
+                r.prioridade ===
+                'Urgente'
+                  ? 'atrasado'
+                  : 'novo'
+              }"
+            >
+              ${r.prioridade}
+            </span>
+
+          </div>
+
+          <div class="detail-grid">
+
+            <div class="detail-box">
+              <small>Advogado</small>
+              <strong>
+                ${r.advogado}
+              </strong>
+            </div>
+
+            <div class="detail-box">
+              <small>Cliente</small>
+              <strong>
+                ${r.cliente}
+              </strong>
+            </div>
+
+            <div class="detail-box">
+              <small>Processo</small>
+              <strong>
+                ${r.processo}
+              </strong>
+            </div>
+
+            <div class="detail-box">
+              <small>Prazo</small>
+              <strong>
+                ${fmtDate(r.prazo)}
+              </strong>
+            </div>
+
+            <div class="detail-box">
+              <small>Calculista</small>
+              <strong>
+                ${
+                  r.calculista ||
+                  'Não atribuído'
+                }
+              </strong>
+            </div>
+
+            <div class="detail-box">
+              <small>Valor</small>
+              <strong>
+                ${money(r.valor)}
+              </strong>
+            </div>
+
+            <div class="detail-box">
+              <small>Recebido</small>
+              <strong>
+                ${money(r.recebido)}
+              </strong>
+            </div>
+
+            <div class="detail-box">
+              <small>Sistema</small>
+              <strong>
+                ${
+                  r.sistema ||
+                  'Nenhum vinculado'
+                }
+              </strong>
+            </div>
+
+          </div>
+
+          <div
+            class="card"
+            style="margin-top:16px"
+          >
+
+            <div class="card-head">
+              <h2>Solicitação</h2>
+            </div>
+
+            <div class="card-body">
+
+              <div
+                style="
+                  font-size:13px;
+                  line-height:1.65
+                "
+              >
+                ${
+                  r.descricao ||
+                  'Sem descrição.'
+                }
+              </div>
+
+            </div>
+
+          </div>
+
+          <div
+            class="card"
+            style="margin-top:16px"
+          >
+
+            <div class="card-head">
+
+              <h2>
+                Google Drive
+              </h2>
+
+              <button
+                class="btn"
+                data-drive
+              >
+                📁 Abrir pasta
+              </button>
+
+            </div>
+
+            <div class="card-body">
+
+              <div class="notice">
+                A pasta privada do Google Drive será vinculada nesta etapa da integração.
+              </div>
+
+            </div>
+
+          </div>
+
+          <div
+            class="card"
+            style="margin-top:16px"
+          >
+
+            <div class="card-head">
+              <h2>Histórico</h2>
+            </div>
+
+            <div class="card-body">
+
+              <div class="timeline">
+
+                ${
+                  (
+                    r.historico ||
+                    []
+                  )
+                    .map(
+                      e => `
+                        <div class="event">
+
+                          <strong>
+                            ${e[1]}
+                          </strong>
+
+                          <small>
+                            ${e[0]}
+                          </small>
+
+                        </div>
+                      `
+                    )
+                    .join('')
+                }
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </aside>
+
+    </div>
+  `;
+
+  $('#drawerBackdrop')
+    .addEventListener(
+      'click',
+      e => {
+
+        if (
+          e.target.id ===
+            'drawerBackdrop' ||
+          e.target.matches(
+            '[data-drawer-close]'
+          )
+        ) {
+          closeDrawer();
+        }
+
+        if (
+          e.target.matches(
+            '[data-drive]'
+          )
+        ) {
+          showToast(
+            'Integração Google Drive ainda não configurada.'
+          );
+        }
+      }
+    );
+}
+
+function closeDrawer() {
+  $('#drawerRoot').innerHTML = '';
+}
+
+function bindView() {
+
+  $$('[data-view]')
+    .forEach(
+      b =>
+        b.addEventListener(
+          'click',
+          () =>
+            nav(
+              b.dataset.view
+            )
+        )
+    );
+
+  $$('[data-view-link]')
+    .forEach(
+      b =>
+        b.addEventListener(
+          'click',
+          () =>
+            nav(
+              b.dataset.viewLink
+            )
+        )
+    );
+
+  $$('[data-new]')
+    .forEach(
+      b =>
+        b.addEventListener(
+          'click',
+          openNew
+        )
+    );
+
+  $$('[data-open]')
+    .forEach(
+      el =>
+        el.addEventListener(
+          'click',
+          () =>
+            openDetail(
+              el.dataset.open
+            )
+        )
+    );
+
+  const q = $('#q');
+
+  if (q) {
+    q.addEventListener(
+      'input',
+      () => {
+        state.query =
+          q.value;
+
+        render();
+      }
+    );
+  }
+
+  const fs =
+    $('#filterStatus');
+
+  if (fs) {
+    fs.addEventListener(
+      'change',
+      () => {
+        state.status =
+          fs.value;
+
+        render();
+      }
+    );
+  }
+
+  const fa =
+    $('#filterArea');
+
+  if (fa) {
+    fa.addEventListener(
+      'change',
+      () => {
+        state.area =
+          fa.value;
+
+        render();
+      }
+    );
+  }
+
+  const ps =
+    $('#processSearch');
+
+  if (ps) {
+    ps.addEventListener(
+      'input',
+      () => {
+
+        $('#processTable')
+          .innerHTML =
+          processTable(
+            ps.value
+          );
+
+        $$('[data-open]')
+          .forEach(
+            el =>
+              el.addEventListener(
+                'click',
+                () =>
+                  openDetail(
+                    el.dataset.open
+                  )
+              )
+          );
+      }
+    );
+  }
+
+  const vm =
+    $('#viewMode');
+
+  if (vm) {
+
+    vm.addEventListener(
+      'change',
+      () => {
+
+        if (
+          vm.value ===
+          'kanban'
+        ) {
+
+          $('#requestList')
+            .innerHTML =
+            kanban();
+
+        } else {
+
+          let rows =
+            db.requests.filter(
+              r =>
+                (
+                  !state.query ||
+                  `
+                    ${r.codigo}
+                    ${r.advogado}
+                    ${r.cliente}
+                  `
+                    .toLowerCase()
+                    .includes(
+                      state.query.toLowerCase()
+                    )
+                ) &&
+                (
+                  !state.status ||
+                  r.status ===
+                    state.status
+                ) &&
+                (
+                  !state.area ||
+                  r.area ===
+                    state.area
+                )
+            );
+
+          $('#requestList')
+            .innerHTML =
+            tableRequests(
+              rows
+            );
+
+          $$('[data-open]')
+            .forEach(
+              el =>
+                el.addEventListener(
+                  'click',
+                  () =>
+                    openDetail(
+                      el.dataset.open
+                    )
+                )
+            );
+        }
+      }
+    );
+  }
+
+  $$('[data-system]')
+    .forEach(
+      b =>
+        b.addEventListener(
+          'click',
+          () =>
+            showToast(
+              'Cadastro de sistemas será conectado ao Supabase.'
+            )
+        )
+    );
+}
+
+function kanban() {
+
+  const cols = [
+    ['NOVO', 'Novas'],
+    ['EM_CÁLCULO', 'Em cálculo'],
+    ['EM_REVISÃO', 'Em revisão'],
+    ['ENVIADO', 'Enviadas']
+  ];
+
+  return `
+    <div class="kanban">
+
+      ${
+        cols
+          .map(
+            ([s, l]) => `
+              <div class="kanban-col">
+
+                <div class="kanban-head">
+                  <span>${l}</span>
+                  <span>
+                    ${
+                      db.requests.filter(
+                        r =>
+                          r.status === s
+                      ).length
+                    }
+                  </span>
+                </div>
+
+                ${
+                  db.requests
+                    .filter(
+                      r =>
+                        r.status === s
+                    )
+                    .map(
+                      r => `
+                        <div
+                          class="kanban-card"
+                          data-open="${r.id}"
+                        >
+
+                          <strong>
+                            ${r.codigo}
+                          </strong>
+
+                          <small>
+                            ${r.tipo}
+                            <br>
+                            ${r.advogado}
+                            <br>
+                            Prazo:
+                            ${fmtDate(
+                              r.prazo
+                            )}
+                          </small>
+
+                        </div>
+                      `
+                    )
+                    .join('')
+                }
+
+              </div>
+            `
+          )
+          .join('')
+      }
+
+    </div>
+  `;
+}
+
+$('#menuBtn').addEventListener(
+  'click',
+  () =>
+    $('#sidebar').classList.toggle(
+      'open'
+    )
+);
+
+$$('[data-view]').forEach(
+  b =>
+    b.addEventListener(
+      'click',
+      () =>
+        nav(
+          b.dataset.view
+        )
+    )
+);
 
 (async function iniciarAplicacao() {
-  const autenticado = await carregarSessao();
+
+  const autenticado =
+    await carregarSessao();
 
   if (!autenticado) return;
 
-  const dadosCarregados = await carregarSolicitacoes();
+  const dadosCarregados =
+    await carregarSolicitacoes();
 
   if (!dadosCarregados) return;
 
   render();
+
 })();
