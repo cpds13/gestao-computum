@@ -1689,3 +1689,229 @@ Google Drive privado
 O projeto será construído dentro de uma identidade visual comum aos produtos Computum, tomando como referências os projetos existentes do CálculoJus e do Saúde Computum.
 
 O objetivo final é que o Gestão seja o **painel central da operação de cálculos judiciais**, mantendo separados os sistemas responsáveis pelos cálculos propriamente ditos.
+
+---
+
+# 18. Baseline implementado — V6
+
+Esta seção registra o estado efetivamente implementado e testado em 27/09/2026. Ela complementa as definições conceituais das seções anteriores.
+
+## 18.1 Hospedagem e repositório
+
+- Repositório GitHub: `cpds13/gestao-computum`
+- Branch de produção: `main`
+- Hospedagem: GitHub Pages
+- Domínio: `https://gestao.computum.com.br`
+- Integração GitHub ↔ Supabase configurada.
+
+## 18.2 Autenticação efetivamente implementada
+
+A aplicação utiliza Supabase Auth.
+
+O fluxo de inicialização é:
+
+```text
+Supabase Auth
+   ↓
+recupera sessão
+   ↓
+consulta public.usuarios pelo UUID do usuário autenticado
+   ↓
+verifica ativo = true
+   ↓
+carrega interface
+```
+
+O usuário administrativo utilizado nos testes é `gestao@computum.com.br`.
+
+O registro de `public.usuarios` precisa utilizar o mesmo UUID de `auth.users`.
+
+## 18.3 Banco efetivamente utilizado
+
+Além das tabelas previstas originalmente, foi criada a tabela própria de calculistas:
+
+```text
+calculistas
+├── id
+├── nome
+├── ativo
+├── created_at
+└── updated_at
+```
+
+A tabela possui índice único case-insensitive para `nome`.
+
+A tabela está protegida por RLS e usuários autenticados possuem as permissões necessárias para a operação atual.
+
+## 18.4 Separação entre usuários e calculistas
+
+Foi definida uma separação funcional importante:
+
+**Usuários (`usuarios`)**
+
+Representam pessoas que podem acessar o Gestão Computum.
+
+**Calculistas (`calculistas`)**
+
+Representam pessoas responsáveis pela execução dos cálculos, sem necessidade de possuir conta ou senha no sistema.
+
+Portanto, Patrick, Ana Clara e Ericka **não precisam ser criados no Supabase Authentication** apenas para aparecerem como calculistas.
+
+## 18.5 Relação da solicitação com o calculista
+
+A coluna `solicitacoes.calculista_id` foi ajustada para referenciar:
+
+```text
+public.calculistas(id)
+```
+
+em vez de:
+
+```text
+public.usuarios(id)
+```
+
+O comportamento atual é:
+
+```text
+Nova solicitação
+      ↓
+Calculista selecionado
+      ↓
+consulta public.calculistas
+      ↓
+solicitacoes.calculista_id
+```
+
+## 18.6 Cadastro atual de calculistas
+
+Os registros ativos atuais são:
+
+1. Patrick
+2. Ana Clara
+3. Ericka
+
+O formulário de nova solicitação consulta esses registros no Supabase. Os nomes não são mais mantidos como lista fixa no código.
+
+## 18.7 Criação real de solicitação
+
+A função `createRequest()` deixou de utilizar `localStorage` para persistir novas solicitações.
+
+O fluxo atual é:
+
+1. valida campos obrigatórios;
+2. localiza ou cria advogado;
+3. localiza ou cria cliente;
+4. localiza ou cria processo quando informado;
+5. localiza área de serviço;
+6. localiza ou cria tipo de serviço;
+7. localiza calculista na tabela `calculistas`;
+8. converte prioridade e tipo de entrega;
+9. gera código sequencial anual;
+10. insere em `solicitacoes`;
+11. registra `CRIACAO` em `historico_solicitacao`;
+12. recarrega os dados do Supabase;
+13. atualiza a interface.
+
+## 18.8 Testes reais realizados
+
+Foram realizados testes de integração com o projeto Supabase utilizado pelo sistema.
+
+### Teste de autenticação
+
+Resultado: **aprovado**.
+
+Inicialmente o Auth funcionava, mas faltava o registro correspondente em `public.usuarios`. O registro foi criado utilizando o mesmo UUID de `auth.users`, e o carregamento do perfil passou a funcionar.
+
+### Teste de criação de solicitação
+
+Resultado: **aprovado**.
+
+Foi criada a solicitação:
+
+```text
+CJ-2026-00001
+```
+
+### Teste de calculista
+
+Resultado: **aprovado**.
+
+Foi criada a solicitação:
+
+```text
+CJ-2026-00002
+```
+
+com:
+
+```text
+Calculista: Patrick
+```
+
+A listagem da aplicação confirmou o vínculo.
+
+## 18.9 Estado dos documentos
+
+O campo de documento inicial já existe na interface, mas o upload ainda não está conectado ao Google Drive.
+
+Portanto, na V6:
+
+- o campo de seleção de arquivo existe;
+- o arquivo ainda não é enviado ao Drive;
+- a tabela `arquivos` existe no banco;
+- a tabela `pastas_drive` existe no banco;
+- a integração OAuth/Google Drive ainda não foi implementada.
+
+## 18.10 Estado do workflow
+
+O banco já possui os status definidos para a operação, mas o workflow completo de alteração de status ainda não foi implementado na interface.
+
+Status definidos:
+
+```text
+NOVO
+ANALISE
+AGUARDANDO_DOCUMENTOS
+EM_CALCULO
+EM_REVISAO
+ENVIADO
+AGUARDANDO_PAGAMENTO
+CONCLUIDO
+IMPUGNACAO
+RETRABALHO
+PAUSADO
+CANCELADO
+```
+
+## 18.11 Estado financeiro
+
+A estrutura de pagamentos já existe no banco e a interface possui leitura básica dos valores, mas o CRUD financeiro completo ainda será desenvolvido.
+
+A próxima etapa financeira deverá permitir múltiplos pagamentos por solicitação, saldo e histórico.
+
+## 18.12 Próxima etapa oficial
+
+A próxima versão funcional será dedicada à integração com Google Drive.
+
+Objetivo:
+
+```text
+Nova solicitação
+       ↓
+Criar pasta no Drive
+       ↓
+CJ-AAAA-NNNNN
+       ├── 01 - Documentos recebidos
+       ├── 02 - Cálculos
+       ├── 03 - Parecer
+       └── 04 - Retrabalho
+       ↓
+Enviar documento inicial
+       ↓
+Registrar arquivo no Supabase
+       ↓
+Registrar pasta no Supabase
+```
+
+Credenciais privadas e segredos não deverão ser colocados no frontend GitHub Pages.
