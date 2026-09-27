@@ -54,8 +54,36 @@ async function carregarSessao() {
   }
 
   currentProfile = profile;
+  atualizarUsuarioInterface();
 
   return true;
+}
+
+function atualizarUsuarioInterface() {
+  if (!currentProfile) return;
+
+  const nome = currentProfile.nome || 'Usuário';
+
+  const perfil = currentProfile.perfil
+    ? currentProfile.perfil
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, letra => letra.toUpperCase())
+    : 'Usuário';
+
+  const inicial = nome.trim().charAt(0).toUpperCase() || 'U';
+
+  const sidebarName = document.getElementById('sidebarUserName');
+  const sidebarProfile = document.getElementById('sidebarUserProfile');
+  const sidebarAvatar = document.getElementById('sidebarAvatar');
+
+  const topbarName = document.getElementById('topbarUserName');
+  const topbarAvatar = document.getElementById('topbarAvatar');
+
+  if (sidebarName) sidebarName.textContent = nome;
+  if (sidebarProfile) sidebarProfile.textContent = perfil;
+  if (sidebarAvatar) sidebarAvatar.textContent = inicial;
+  if (topbarName) topbarName.textContent = nome;
+  if (topbarAvatar) topbarAvatar.textContent = inicial;
 }
 
 function mostrarLogin(mensagem = '') {
@@ -155,6 +183,7 @@ function mostrarLogin(mensagem = '') {
     window.location.reload();
   });
 }
+
 const seed = [
   {id:'1', codigo:'CJ-2026-00157', advogado:'Dr. João Silva', cliente:'Maria Souza', processo:'0001234-56.2025.4.05.8300', area:'Servidor Público', tipo:'Abono de Permanência', status:'EM_CÁLCULO', prioridade:'Alta', calculista:'Patrick', revisor:'', prazo:'2026-09-30', valor:800, recebido:0, origem:'Indicação', sistema:'Abono Computum', descricao:'Apurar diferenças de abono conforme decisão judicial.', data:'2026-09-26', drive:'', historico:[['26/09 09:15','Solicitação criada'],['26/09 09:30','Patrick atribuído'],['27/09 08:12','Cálculo iniciado']]},
   {id:'2', codigo:'CJ-2026-00156', advogado:'Dra. Ana Costa', cliente:'Carlos Mendes', processo:'0009876-11.2024.4.05.8300', area:'Previdenciário', tipo:'Liquidação de sentença', status:'EM_REVISÃO', prioridade:'Normal', calculista:'Patrick', revisor:'João', prazo:'2026-09-29', valor:1200, recebido:1200, origem:'Instagram', sistema:'', descricao:'Liquidação conforme sentença e acórdão.', data:'2026-09-25', drive:'', historico:[['25/09 10:10','Solicitação criada'],['26/09 15:40','Cálculo concluído'],['26/09 16:20','Enviado para revisão']]},
@@ -204,7 +233,7 @@ const views = {
    const due=db.requests.reduce((a,r)=>a+Math.max(0,(r.valor||0)-(r.recebido||0)),0);
    const retr=2;
    const attention=db.requests.filter(r=>daysTo(r.prazo)<=3 && !['CONCLUÍDO','CANCELADO'].includes(r.status));
-   return pageHead('Boa noite, Patrick','Visão geral da operação de cálculos judiciais.','<button class="btn btn-primary" data-new>＋ Nova solicitação</button>')+
+   return pageHead(`Boa noite, ${currentProfile?.nome || 'Usuário'}`,'Visão geral da operação de cálculos judiciais.','<button class="btn btn-primary" data-new>＋ Nova solicitação</button>')+
    `<div class="grid kpi-grid">${kpi('Em aberto',open,'Solicitações não concluídas')}${kpi('A receber',money(due),'Saldo das demandas')}${kpi('Recebido',money(recv),'Acumulado no protótipo')}${kpi('Retrabalhos',retr,'Ocorrências recentes')}</div>`+
    `<div class="section-grid"><section class="card"><div class="card-head"><h2>Solicitações recentes</h2><button class="kpi-link" data-view-link="solicitacoes">Ver todas</button></div>${tableRequests(db.requests.slice(0,6))}</section><section class="card"><div class="card-head"><h2>Precisam de atenção</h2></div><div class="card-body"><div class="alert-list">${attention.length?attention.map(r=>`<div class="alert ${daysTo(r.prazo)<0?'danger':'warning'}" data-open="${r.id}"><div class="mark"></div><div><strong>${r.codigo} · ${r.tipo}</strong><small>${daysTo(r.prazo)<0?'Atrasado':daysTo(r.prazo)===0?'Vence hoje':`Vence em ${daysTo(r.prazo)} dias`} · ${r.advogado}</small></div></div>`).join(''):`<div class="empty">Nenhuma pendência urgente.</div>`}</div></div></section></div>`;
  },
@@ -254,6 +283,7 @@ const serviceMap={
  'Tributário':['Diferenças','Atualização','Liquidação','Outro'],
  'Saúde':['Plano de Saúde','Dano material','Dano moral','Liquidação','Outro']
 };
+
 function openNew(){ $('#modalRoot').innerHTML=newModal(); const area=$('#newArea'), tipo=$('#newTipo'); area.addEventListener('change',()=>{tipo.innerHTML='<option value="">Selecione</option>'+(serviceMap[area.value]||[]).map(x=>`<option>${x}</option>`).join('')}); $('#requestModal').addEventListener('click',e=>{if(e.target.id==='requestModal'||e.target.matches('[data-close]')) closeModal()}); $('#requestForm').addEventListener('submit',createRequest); }
 function closeModal(){ $('#modalRoot').innerHTML=''; }
 function createRequest(e){ e.preventDefault(); const f=new FormData(e.target); const num=db.requests.length+158; const r={id:crypto.randomUUID?crypto.randomUUID():String(Date.now()),codigo:`CJ-${today.getFullYear()}-${String(num).padStart(5,'0')}`,advogado:f.get('advogado'),cliente:f.get('cliente'),processo:f.get('processo')||'Não informado',area:f.get('area'),tipo:f.get('tipo'),status:'NOVO',prioridade:f.get('prioridade'),calculista:f.get('calculista'),revisor:'',prazo:f.get('prazo'),valor:parseMoney(f.get('valor')),recebido:0,origem:f.get('origem'),sistema:serviceSystem(f.get('tipo')),descricao:f.get('descricao'),data:new Date().toISOString().slice(0,10),drive:'',historico:[[new Date().toLocaleString('pt-BR'), 'Solicitação criada']]}; db.requests.unshift(r);db.save();closeModal();showToast(`${r.codigo} criado com sucesso.`);state.view='solicitacoes';render(); }
@@ -275,6 +305,7 @@ function bindView(){
   const vm=$('#viewMode'); if(vm)vm.addEventListener('change',()=>{ if(vm.value==='kanban') $('#requestList').innerHTML=kanban(); else {let rows=db.requests.filter(r=>(!state.query||`${r.codigo} ${r.advogado} ${r.cliente}`.toLowerCase().includes(state.query.toLowerCase())) && (!state.status||r.status===state.status)&&(!state.area||r.area===state.area));$('#requestList').innerHTML=tableRequests(rows);$$('[data-open]').forEach(el=>el.addEventListener('click',()=>openDetail(el.dataset.open)));} });
   $$('[data-system]').forEach(b=>b.addEventListener('click',()=>showToast('Cadastro de sistemas será conectado ao Supabase.')));
 }
+
 function kanban(){const cols=[['NOVO','Novas'],['EM_CÁLCULO','Em cálculo'],['EM_REVISÃO','Em revisão'],['ENVIADO','Enviadas']];return `<div class="kanban">${cols.map(([s,l])=>`<div class="kanban-col"><div class="kanban-head"><span>${l}</span><span>${db.requests.filter(r=>r.status===s).length}</span></div>${db.requests.filter(r=>r.status===s).map(r=>`<div class="kanban-card" data-open="${r.id}"><strong>${r.codigo}</strong><small>${r.tipo}<br>${r.advogado}<br>Prazo: ${fmtDate(r.prazo)}</small></div>`).join('')}</div>`).join('')}</div>`}
 
 $('#menuBtn').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
