@@ -279,4 +279,11 @@ function kanban(){const cols=[['NOVO','Novas'],['EM_CÁLCULO','Em cálculo'],['E
 
 $('#menuBtn').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
 $$('[data-view]').forEach(b=>b.addEventListener('click',()=>nav(b.dataset.view)));
-render();
+
+(async function iniciarAplicacao() {
+  const autenticado = await carregarSessao();
+
+  if (!autenticado) return;
+
+  render();
+})();
