@@ -575,7 +575,408 @@ const serviceMap={
 
 function openNew(){ $('#modalRoot').innerHTML=newModal(); const area=$('#newArea'), tipo=$('#newTipo'); area.addEventListener('change',()=>{tipo.innerHTML='<option value="">Selecione</option>'+(serviceMap[area.value]||[]).map(x=>`<option>${x}</option>`).join('')}); $('#requestModal').addEventListener('click',e=>{if(e.target.id==='requestModal'||e.target.matches('[data-close]')) closeModal()}); $('#requestForm').addEventListener('submit',createRequest); }
 function closeModal(){ $('#modalRoot').innerHTML=''; }
-function createRequest(e){ e.preventDefault(); const f=new FormData(e.target); const num=db.requests.length+158; const r={id:crypto.randomUUID?crypto.randomUUID():String(Date.now()),codigo:`CJ-${today.getFullYear()}-${String(num).padStart(5,'0')}`,advogado:f.get('advogado'),cliente:f.get('cliente'),processo:f.get('processo')||'Não informado',area:f.get('area'),tipo:f.get('tipo'),status:'NOVO',prioridade:f.get('prioridade'),calculista:f.get('calculista'),revisor:'',prazo:f.get('prazo'),valor:parseMoney(f.get('valor')),recebido:0,origem:f.get('origem'),sistema:serviceSystem(f.get('tipo')),descricao:f.get('descricao'),data:new Date().toISOString().slice(0,10),drive:'',historico:[[new Date().toLocaleString('pt-BR'), 'Solicitação criada']]}; db.requests.unshift(r);db.save();closeModal();showToast(`${r.codigo} criado com sucesso.`);state.view='solicitacoes';render(); }
+async function createRequest(e) {
+  e.preventDefault();
+
+  const f = new FormData(e.target);
+  const submitButton = e.target.querySelector('button[type="submit"]');
+
+  try {
+    submitButton.disabled = true;
+    submitButton.textContent = 'Salvando...';
+
+    const advogadoNome = String(f.get('advogado') || '').trim();
+    const clienteNome = String(f.get('cliente') || '').trim();
+    const cpf = String(f.get('cpf') || '').trim();
+    const processoNumero = String(f.get('processo') || '').trim();
+    const areaNome = String(f.get('area') || '').trim();
+    const tipoNome = String(f.get('tipo') || '').trim();
+    const origem = String(f.get('origem') || '').trim();
+    const prioridadeLabel = String(f.get('prioridade') || 'Normal').trim();
+    const calculistaNome = String(f.get('calculista') || '').trim();
+    const entregaLabel = String(f.get('entrega') || 'Cálculo').trim();
+    const descricao = String(f.get('descricao') || '').trim();
+    const prazo = String(f.get('prazo') || '').trim();
+    const valor = parseMoney(f.get('valor'));
+
+    if (!advogadoNome || !clienteNome || !areaNome || !tipoNome) {
+      throw new Error('Preencha os campos obrigatórios.');
+    }
+
+    /* =====================================================
+       1. ADVOGADO
+       ===================================================== */
+
+    let advogado;
+
+    const advogadoBusca = await supabaseClient
+      .from('advogados')
+      .select('id, nome, origem')
+      .ilike('nome', advogadoNome)
+      .limit(1)
+      .maybeSingle();
+
+    if (advogadoBusca.error) {
+      throw advogadoBusca.error;
+    }
+
+    advogado = advogadoBusca.data;
+
+    if (!advogado) {
+      const novoAdvogado = await supabaseClient
+        .from('advogados')
+        .insert({
+          nome: advogadoNome,
+          origem: origem || null
+        })
+        .select('id, nome, origem')
+        .single();
+
+      if (novoAdvogado.error) {
+        throw novoAdvogado.error;
+      }
+
+      advogado = novoAdvogado.data;
+    }
+
+    /* =====================================================
+       2. CLIENTE
+       ===================================================== */
+
+    let cliente = null;
+
+    if (cpf) {
+      const clienteCpf = await supabaseClient
+        .from('clientes')
+        .select('id, nome, cpf')
+        .eq('cpf', cpf)
+        .limit(1)
+        .maybeSingle();
+
+      if (clienteCpf.error) {
+        throw clienteCpf.error;
+      }
+
+      cliente = clienteCpf.data;
+    }
+
+    if (!cliente) {
+      const clienteNomeBusca = await supabaseClient
+        .from('clientes')
+        .select('id, nome, cpf')
+        .ilike('nome', clienteNome)
+        .limit(1)
+        .maybeSingle();
+
+      if (clienteNomeBusca.error) {
+        throw clienteNomeBusca.error;
+      }
+
+      cliente = clienteNomeBusca.data;
+    }
+
+    if (!cliente) {
+      const novoCliente = await supabaseClient
+        .from('clientes')
+        .insert({
+          nome: clienteNome,
+          cpf: cpf || null
+        })
+        .select('id, nome, cpf')
+        .single();
+
+      if (novoCliente.error) {
+        throw novoCliente.error;
+      }
+
+      cliente = novoCliente.data;
+    }
+
+    /* =====================================================
+       3. PROCESSO
+       ===================================================== */
+
+    let processo = null;
+
+    if (processoNumero) {
+      const processoBusca = await supabaseClient
+        .from('processos')
+        .select('id, numero_processo, cliente_id')
+        .eq('numero_processo', processoNumero)
+        .limit(1)
+        .maybeSingle();
+
+      if (processoBusca.error) {
+        throw processoBusca.error;
+      }
+
+      processo = processoBusca.data;
+
+      if (!processo) {
+        const novoProcesso = await supabaseClient
+          .from('processos')
+          .insert({
+            numero_processo: processoNumero,
+            cliente_id: cliente.id
+          })
+          .select('id, numero_processo, cliente_id')
+          .single();
+
+        if (novoProcesso.error) {
+          throw novoProcesso.error;
+        }
+
+        processo = novoProcesso.data;
+      }
+    }
+
+    /* =====================================================
+       4. ÁREA
+       ===================================================== */
+
+    const areaResult = await supabaseClient
+      .from('areas_servico')
+      .select('id, nome')
+      .eq('nome', areaNome)
+      .limit(1)
+      .maybeSingle();
+
+    if (areaResult.error) {
+      throw areaResult.error;
+    }
+
+    if (!areaResult.data) {
+      throw new Error(
+        `Área de serviço não encontrada: ${areaNome}`
+      );
+    }
+
+    const area = areaResult.data;
+
+    /* =====================================================
+       5. TIPO DE SERVIÇO
+       ===================================================== */
+
+    const tipoResult = await supabaseClient
+      .from('tipos_servico')
+      .select('id, nome, area_id')
+      .eq('area_id', area.id)
+      .eq('nome', tipoNome)
+      .limit(1)
+      .maybeSingle();
+
+    if (tipoResult.error) {
+      throw tipoResult.error;
+    }
+
+    let tipo = tipoResult.data;
+
+    if (!tipo) {
+      const novoTipo = await supabaseClient
+        .from('tipos_servico')
+        .insert({
+          area_id: area.id,
+          nome: tipoNome
+        })
+        .select('id, nome, area_id')
+        .single();
+
+      if (novoTipo.error) {
+        throw novoTipo.error;
+      }
+
+      tipo = novoTipo.data;
+    }
+
+    /* =====================================================
+       6. CALCULISTA
+       ===================================================== */
+
+    let calculistaId = null;
+
+    if (calculistaNome) {
+      const calculistaResult = await supabaseClient
+        .from('usuarios')
+        .select('id, nome, perfil, ativo')
+        .ilike('nome', calculistaNome)
+        .eq('ativo', true)
+        .limit(1)
+        .maybeSingle();
+
+      if (calculistaResult.error) {
+        throw calculistaResult.error;
+      }
+
+      if (calculistaResult.data) {
+        calculistaId = calculistaResult.data.id;
+      }
+    }
+
+    /* =====================================================
+       7. NORMALIZAÇÃO
+       ===================================================== */
+
+    const prioridadeMap = {
+      'Normal': 'normal',
+      'Alta': 'alta',
+      'Urgente': 'urgente'
+    };
+
+    const entregaMap = {
+      'Cálculo': 'calculo',
+      'Cálculo + parecer': 'calculo_parecer',
+      'Apenas parecer': 'parecer',
+      'Conferência': 'conferencia'
+    };
+
+    const prioridade =
+      prioridadeMap[prioridadeLabel] || 'normal';
+
+    const tipoEntrega =
+      entregaMap[entregaLabel] || 'calculo';
+
+    /* =====================================================
+       8. GERAÇÃO DO CÓDIGO
+       ===================================================== */
+
+    const { data: ultimaSolicitacao, error: ultimaError } =
+      await supabaseClient
+        .from('solicitacoes')
+        .select('codigo')
+        .like('codigo', `CJ-${today.getFullYear()}-%`)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (ultimaError) {
+      throw ultimaError;
+    }
+
+    let proximoNumero = 1;
+
+    if (ultimaSolicitacao?.codigo) {
+      const partes =
+        ultimaSolicitacao.codigo.split('-');
+
+      const ultimoNumero =
+        Number(partes[2]);
+
+      if (Number.isFinite(ultimoNumero)) {
+        proximoNumero = ultimoNumero + 1;
+      }
+    }
+
+    const codigo =
+      `CJ-${today.getFullYear()}-${String(proximoNumero).padStart(5, '0')}`;
+
+    /* =====================================================
+       9. CRIA A SOLICITAÇÃO
+       ===================================================== */
+
+    const solicitacaoResult = await supabaseClient
+      .from('solicitacoes')
+      .insert({
+        codigo,
+        advogado_id: advogado.id,
+        cliente_id: cliente.id,
+        processo_id: processo?.id || null,
+        area_id: area.id,
+        tipo_servico_id: tipo.id,
+        descricao: descricao || null,
+        prazo: prazo || null,
+        status: 'NOVO',
+        prioridade,
+        calculista_id: calculistaId,
+        revisor_id: null,
+        tipo_entrega: tipoEntrega,
+        valor_cobrado: valor,
+        desconto: 0,
+        valor_final: valor,
+        origem: origem || null,
+        cliente_antigo: origem === 'Cliente antigo',
+        created_by: currentUser?.id || null
+      })
+      .select('id, codigo')
+      .single();
+
+    if (solicitacaoResult.error) {
+      throw solicitacaoResult.error;
+    }
+
+    const solicitacao =
+      solicitacaoResult.data;
+
+    /* =====================================================
+       10. HISTÓRICO
+       ===================================================== */
+
+    const historicoResult = await supabaseClient
+      .from('historico_solicitacao')
+      .insert({
+        solicitacao_id: solicitacao.id,
+        usuario_id: currentUser?.id || null,
+        tipo_evento: 'CRIACAO',
+        descricao: 'Solicitação criada.'
+      });
+
+    if (historicoResult.error) {
+      console.error(
+        'Solicitação criada, mas houve erro ao registrar o histórico:',
+        historicoResult.error
+      );
+    }
+
+    /* =====================================================
+       11. RECARREGA OS DADOS
+       ===================================================== */
+
+    const dadosCarregados =
+      await carregarSolicitacoes();
+
+    if (!dadosCarregados) {
+      throw new Error(
+        'A solicitação foi criada, mas não foi possível atualizar a tela.'
+      );
+    }
+
+    /* =====================================================
+       12. FINALIZA
+       ===================================================== */
+
+    closeModal();
+
+    state.view = 'solicitacoes';
+
+    render();
+
+    showToast(
+      `${solicitacao.codigo} criado com sucesso.`
+    );
+
+  } catch (error) {
+
+    console.error(
+      'Erro ao criar solicitação:',
+      error
+    );
+
+    showToast(
+      error?.message ||
+      'Não foi possível criar a solicitação.'
+    );
+
+    const button =
+      e.target.querySelector(
+        'button[type="submit"]'
+      );
+
+    if (button) {
+      button.disabled = false;
+      button.textContent =
+        'Criar solicitação';
+    }
+  }
+}
 function parseMoney(v){return Number(String(v||'').replace(/\./g,'').replace(',','.'))||0}
 function serviceSystem(tipo){if(tipo==='Abono de Permanência')return 'Abono Computum';if(tipo==='Plano de Saúde')return 'Saúde Computum';if(tipo==='Diferenças')return 'Diferenças Computum';return '';}
 
