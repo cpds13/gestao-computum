@@ -190,6 +190,7 @@ function mostrarLogin(mensagem = '') {
 
 const db = {
   requests: [],
+  calculistas: [],
   save() {
     // A persistência no Supabase será feita pelas operações CRUD.
     // Nesta etapa, a leitura já vem do banco.
