@@ -605,5 +605,9 @@ $$('[data-view]').forEach(b=>b.addEventListener('click',()=>nav(b.dataset.view))
 
   if (!autenticado) return;
 
+  const dadosCarregados = await carregarSolicitacoes();
+
+  if (!dadosCarregados) return;
+
   render();
 })();
