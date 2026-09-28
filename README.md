@@ -225,3 +225,21 @@ Nunca colocar no frontend:
 - qualquer segredo de backend.
 
 A chave pública do Supabase pode ser utilizada no navegador, desde que o banco esteja protegido por RLS e as políticas sejam configuradas adequadamente.
+
+## V8 — documentos: Google Forms + manual
+
+A V8 define o modelo de documentos sem integração automática com a Google Drive API.
+
+- **Google Forms:** canal de recebimento de PDFs e imagens.
+- **Manual:** vinculação de arquivos/pastas já existentes no Drive.
+- **Supabase:** registra referências, categoria, origem e histórico.
+- **Google Drive:** continua sendo o armazenamento privado dos documentos.
+
+Detalhamento: `docs/GOOGLE_DRIVE_FORMS.md`.
+
+A migration `003_documentos_forms_manual.sql` documenta a alteração prevista no banco, mas **não deve ser executada ainda**; os campos finais serão validados após a criação do formulário.
+
+
+## V9 — Google Forms + Apps Script
+
+O recebimento de documentos utiliza o Google Forms e um Apps Script vinculado à planilha de respostas. Os arquivos são organizados automaticamente em `Computum/Gestão/CJ-2026-xxxxx/01 - Documentos recebidos`, com subpastas padrão para Cálculos, Parecer e Retrabalho. O frontend possui ação para abrir o Forms e vincular a pasta privada do Drive à solicitação. Não há dependência de Google Cloud ou cartão.

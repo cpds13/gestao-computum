@@ -7,6 +7,7 @@ const CONFIG = {
   supabaseUrl: '',
   supabaseAnonKey: '',
   googleDriveFolderId: '',
+  googleFormUrl: 'https://docs.google.com/forms/d/e/1FAIpQLSes_cqGBuoBI8rjiW2q5kkC0M9hrs5rrqpPijeEHQHmZ8dTXA/viewform?usp=pp_url',
   productionReady: false
 };
 /* =========================================================
@@ -579,6 +580,123 @@ function showToast(msg) {
     () => t.classList.remove('show'),
     2600
   );
+}
+
+function extrairGoogleDriveFolderId(url) {
+  const texto = String(url || '').trim();
+
+  const padroes = [
+    /\/folders\/([a-zA-Z0-9_-]+)/,
+    /[?&]id=([a-zA-Z0-9_-]+)/
+  ];
+
+  for (const padrao of padroes) {
+    const match = texto.match(padrao);
+    if (match) return match[1];
+  }
+
+  return '';
+}
+
+function abrirFormularioForms(r) {
+  const url = CONFIG.googleFormUrl;
+
+  if (!url) {
+    showToast('O endereço do Google Forms ainda não foi configurado.');
+    return;
+  }
+
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+function abrirVincularPastaModal(r) {
+  $('#modalRoot').innerHTML = `
+    <div class="modal-backdrop" id="driveLinkModal">
+      <div class="modal">
+        <div class="modal-head">
+          <h2>Vincular pasta do Google Drive</h2>
+          <button class="close" data-close>×</button>
+        </div>
+
+        <form id="driveLinkForm">
+          <div class="modal-body">
+            <div class="notice" style="margin-bottom:16px">
+              Solicitação: <strong>${r.codigo}</strong><br>
+              Cole aqui o link da pasta criada pelo Apps Script no Google Drive.
+            </div>
+
+            <div class="field">
+              <label for="driveFolderUrl">Link da pasta</label>
+              <input
+                id="driveFolderUrl"
+                name="driveFolderUrl"
+                class="input"
+                type="url"
+                placeholder="https://drive.google.com/drive/folders/..."
+                value="${r.drive || ''}"
+                required
+              >
+            </div>
+
+            <small class="muted" style="display:block;margin-top:8px">
+              O link permanece privado conforme as permissões da sua conta Google.
+            </small>
+          </div>
+
+          <div class="modal-foot">
+            <button type="button" class="btn" data-close>Cancelar</button>
+            <button type="submit" class="btn btn-primary">Salvar vínculo</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+
+  $('#driveLinkModal').addEventListener('click', e => {
+    if (e.target.id === 'driveLinkModal' || e.target.matches('[data-close]')) {
+      closeModal();
+    }
+  });
+
+  $('#driveLinkForm').addEventListener('submit', async e => {
+    e.preventDefault();
+
+    const url = e.target.driveFolderUrl.value.trim();
+    const folderId = extrairGoogleDriveFolderId(url);
+    const button = e.target.querySelector('button[type="submit"]');
+
+    if (!folderId) {
+      showToast('Cole um link válido de uma pasta do Google Drive.');
+      return;
+    }
+
+    button.disabled = true;
+    button.textContent = 'Salvando...';
+
+    const { error } = await supabaseClient
+      .from('solicitacoes')
+      .update({
+        google_drive_folder_id: folderId,
+        google_drive_url: url,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', r.id);
+
+    if (error) {
+      console.error('Erro ao vincular pasta do Drive:', error);
+      showToast('Não foi possível salvar o vínculo com o Drive.');
+      button.disabled = false;
+      button.textContent = 'Salvar vínculo';
+      return;
+    }
+
+    const item = db.requests.find(x => x.id === r.id);
+    if (item) item.drive = url;
+
+    closeModal();
+    showToast('Pasta do Google Drive vinculada.');
+    openDetail(r.id);
+  });
 }
 
 function nav(view) {
@@ -1852,7 +1970,7 @@ function newModal() {
               class="notice"
               style="margin-bottom:16px"
             >
-              Cadastro rápido: os dados podem ser complementados depois. O upload para o Google Drive será conectado quando a integração OAuth estiver configurada.
+              Cadastro rápido: os dados podem ser complementados depois. Os documentos serão recebidos pelo Google Forms e organizados no Google Drive.
             </div>
 
             <div class="form-grid">
@@ -3070,22 +3188,36 @@ function openDetail(id) {
             <div class="card-head">
 
               <h2>
-                Google Drive
+                Documentos e Google Drive
               </h2>
-
-              <button
-                class="btn"
-                data-drive
-              >
-                📁 Abrir pasta
-              </button>
 
             </div>
 
             <div class="card-body">
 
               <div class="notice">
-                A pasta privada do Google Drive será vinculada nesta etapa da integração.
+                Os documentos são recebidos pelo Google Forms e organizados automaticamente pelo Apps Script. A pasta da solicitação pode ser vinculada aqui para acesso direto.
+              </div>
+
+              <div class="actions" style="margin-top:14px">
+                <button class="btn btn-primary" data-drive-form>📤 Enviar pelo Forms</button>
+                <button class="btn" data-drive-link>🔗 Vincular pasta</button>
+                <button class="btn" data-drive>📁 Abrir pasta no Drive</button>
+              </div>
+
+              <div class="mini-stats" style="margin-top:14px">
+                <div class="mini-stat">
+                  <strong>FORM</strong>
+                  <small>Recebimento de PDFs, imagens e outros documentos permitidos.</small>
+                </div>
+                <div class="mini-stat">
+                  <strong>MANUAL</strong>
+                  <small>Vinculação de arquivos ou pastas já existentes no Drive.</small>
+                </div>
+                <div class="mini-stat">
+                  <strong>SUPABASE</strong>
+                  <small>Registro da referência, categoria, origem e histórico.</small>
+                </div>
               </div>
 
             </div>
@@ -3156,14 +3288,20 @@ function openDetail(id) {
           closeDrawer();
         }
 
-        if (
-          e.target.matches(
-            '[data-drive]'
-          )
-        ) {
-          showToast(
-            'Integração Google Drive ainda não configurada.'
-          );
+        if (e.target.matches('[data-drive]')) {
+          if (r.drive) {
+            window.open(r.drive, '_blank', 'noopener,noreferrer');
+          } else {
+            showToast('A pasta desta solicitação ainda não foi vinculada ao Google Drive.');
+          }
+        }
+
+        if (e.target.matches('[data-drive-form]')) {
+          abrirFormularioForms(r);
+        }
+
+        if (e.target.matches('[data-drive-link]')) {
+          abrirVincularPastaModal(r);
         }
       }
     );

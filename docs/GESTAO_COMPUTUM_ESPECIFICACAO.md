@@ -1915,3 +1915,18 @@ Registrar pasta no Supabase
 ```
 
 Credenciais privadas e segredos não deverão ser colocados no frontend GitHub Pages.
+
+---
+
+# V8 — Modelo de documentos com Google Forms + vinculação manual
+
+A integração direta com a Google Drive API não faz parte da implementação imediata.
+
+O recebimento de documentos será dividido em duas modalidades:
+
+- **FORM:** arquivos recebidos por Google Forms;
+- **MANUAL:** arquivos ou pastas já existentes no Google Drive vinculados pelo usuário.
+
+Ambas alimentam a mesma área de documentos da solicitação e devem permanecer associadas ao código `CJ-AAAA-NNNNN`.
+
+O detalhamento operacional está em `docs/GOOGLE_DRIVE_FORMS.md`.
