@@ -64,6 +64,10 @@ function isCalculista() {
   return currentProfile?.perfil === 'calculista';
 }
 
+function isAdministrador() {
+  return currentProfile?.perfil === 'administrador';
+}
+
 function minhasSolicitacoes() {
   if (!isCalculista()) return [];
   const nome = (currentProfile?.nome || '').trim().toLowerCase();
@@ -212,6 +216,11 @@ function mostrarLogin(mensagem = '') {
 const db = {
   requests: [],
   calculistas: [],
+  advogados: [],
+  clientes: [],
+  processos: [],
+  areas: [],
+  tipos: [],
   save() {
     // A persistência no Supabase será feita pelas operações CRUD.
     // Nesta etapa, a leitura já vem do banco.
@@ -382,6 +391,11 @@ async function carregarSolicitacoes() {
     const usuarios = usuariosResult.data || [];
 
     db.calculistas = calculistas;
+    db.advogados = advogados;
+    db.clientes = clientes;
+    db.processos = processos;
+    db.areas = areas;
+    db.tipos = tipos;
 
     const sistemas = sistemasResult.data || [];
     const pagamentos = pagamentosResult.data || [];
@@ -464,12 +478,19 @@ async function carregarSolicitacoes() {
 
       return {
         id: solicitacao.id,
+        advogadoId: solicitacao.advogado_id || '',
+        clienteId: solicitacao.cliente_id || '',
+        processoId: solicitacao.processo_id || '',
+        areaId: solicitacao.area_id || '',
+        tipoId: solicitacao.tipo_servico_id || '',
+        calculistaId: solicitacao.calculista_id || '',
         codigo: solicitacao.codigo,
         advogado: advogado?.nome || 'Não informado',
         cliente: cliente?.nome || 'Não informado',
         processo: processo?.numero_processo || 'Não informado',
         area: area?.nome || 'Não informado',
         tipo: tipo?.nome || 'Não informado',
+        tipoEntrega: solicitacao.tipo_entrega || 'calculo',
         status: normalizarStatus(solicitacao.status),
         prioridade: normalizarPrioridade(solicitacao.prioridade),
         calculista: calculista?.nome || '',
@@ -3314,6 +3335,13 @@ function openDetail(id) {
             ×
           </button>
 
+          ${isAdministrador() ? `
+            <div class="actions" style="margin-left:auto;margin-right:10px">
+              <button class="btn" data-edit-request="${r.id}">✎ Editar</button>
+              <button class="btn" data-delete-request="${r.id}">Excluir</button>
+            </div>
+          ` : ''}
+
         </div>
 
         <div class="drawer-body">
@@ -3569,6 +3597,151 @@ function openDetail(id) {
     );
 }
 
+
+function optionSelected(value, current) {
+  return String(value || '') === String(current || '') ? ' selected' : '';
+}
+
+function editRequestModal(r) {
+  const areaOptions = db.areas.filter(a => a.ativo !== false).map(a =>
+    `<option value="${a.id}"${optionSelected(a.id, r.areaId)}>${a.nome}</option>`
+  ).join('');
+  const tipoOptions = db.tipos.filter(t => t.ativo !== false && (!r.areaId || t.area_id === r.areaId)).map(t =>
+    `<option value="${t.id}"${optionSelected(t.id, r.tipoId)}>${t.nome}</option>`
+  ).join('');
+  const advogadoOptions = db.advogados.filter(a => a.ativo !== false).map(a =>
+    `<option value="${a.id}"${optionSelected(a.id, r.advogadoId)}>${a.nome}${a.oab ? ` — OAB ${a.oab}${a.uf_oab ? '/' + a.uf_oab : ''}` : ''}</option>`
+  ).join('');
+  const clienteOptions = db.clientes.map(c =>
+    `<option value="${c.id}"${optionSelected(c.id, r.clienteId)}>${c.nome}${c.cpf ? ` — ${c.cpf}` : ''}</option>`
+  ).join('');
+  const processoOptions = db.processos.map(p =>
+    `<option value="${p.id}"${optionSelected(p.id, r.processoId)}>${p.numero_processo}</option>`
+  ).join('');
+  const calcOptions = db.calculistas.filter(c => c.ativo !== false).map(c =>
+    `<option value="${c.id}"${optionSelected(c.id, r.calculistaId)}>${c.nome}</option>`
+  ).join('');
+
+  $('#modalRoot').innerHTML = `
+    <div class="modal-backdrop" id="editRequestModal">
+      <div class="modal" style="max-width:900px">
+        <div class="modal-head">
+          <div>
+            <h2>Editar solicitação</h2>
+            <small class="muted">${r.codigo}</small>
+          </div>
+          <button class="close" data-close>×</button>
+        </div>
+        <form id="editRequestForm">
+          <div class="modal-body">
+            <div class="notice" style="margin-bottom:16px">
+              As alterações são salvas na mesma solicitação e ficarão disponíveis imediatamente para o calculista. A alteração também será registrada no histórico.
+            </div>
+            <div class="form-grid">
+              <div class="field"><label>Advogado</label><select class="input" name="advogado_id">${advogadoOptions}</select></div>
+              <div class="field"><label>Cliente</label><select class="input" name="cliente_id">${clienteOptions}</select></div>
+              <div class="field"><label>Processo</label><select class="input" name="processo_id"><option value="">Sem processo</option>${processoOptions}</select></div>
+              <div class="field"><label>Área</label><select class="input" name="area_id" id="editArea">${areaOptions}</select></div>
+              <div class="field"><label>Tipo de serviço</label><select class="input" name="tipo_servico_id" id="editTipo">${tipoOptions}</select></div>
+              <div class="field"><label>Calculista</label><select class="input" name="calculista_id"><option value="">Não atribuído</option>${calcOptions}</select></div>
+              <div class="field"><label>Status</label><select class="input" name="status">
+                ${Object.entries(statusLabel).map(([v,l]) => `<option value="${v}"${optionSelected(v,r.status)}>${l}</option>`).join('')}
+              </select></div>
+              <div class="field"><label>Prioridade</label><select class="input" name="prioridade">
+                <option value="normal"${r.prioridade === 'Normal' ? ' selected' : ''}>Normal</option>
+                <option value="alta"${r.prioridade === 'Alta' ? ' selected' : ''}>Alta</option>
+                <option value="urgente"${r.prioridade === 'Urgente' ? ' selected' : ''}>Urgente</option>
+              </select></div>
+              <div class="field"><label>Prazo</label><input class="input" type="date" name="prazo" value="${r.prazo || ''}"></div>
+              <div class="field"><label>Valor cobrado</label><input class="input" name="valor_cobrado" inputmode="decimal" value="${Number(r.valor || 0).toFixed(2).replace('.', ',')}"></div>
+              <div class="field"><label>Origem</label><select class="input" name="origem">
+                ${['Indicação','Instagram','Site','WhatsApp','Cliente antigo','LinkedIn','Outro'].map(v => `<option${r.origem === v ? ' selected' : ''}>${v}</option>`).join('')}
+              </select></div>
+              <div class="field"><label>Tipo de entrega</label><select class="input" name="tipo_entrega">
+                ${[['calculo','Cálculo'],['calculo_parecer','Cálculo + parecer'],['parecer','Apenas parecer'],['conferencia','Conferência'],['outro','Outro']].map(([v,l]) => `<option value="${v}"${String(r.tipoEntrega || '') === v ? ' selected' : ''}>${l}</option>`).join('')}
+              </select></div>
+              <div class="field full"><label>Descrição / observações</label><textarea class="input" name="descricao" rows="5">${r.descricao || ''}</textarea></div>
+            </div>
+          </div>
+          <div class="modal-foot">
+            <button type="button" class="btn" data-close>Cancelar</button>
+            <button type="submit" class="btn btn-primary">Salvar alterações</button>
+          </div>
+        </form>
+      </div>
+    </div>`;
+
+  const area = $('#editArea');
+  const tipo = $('#editTipo');
+  area.addEventListener('change', () => {
+    tipo.innerHTML = '<option value="">Selecione</option>' + db.tipos.filter(t => t.ativo !== false && t.area_id === area.value).map(t => `<option value="${t.id}">${t.nome}</option>`).join('');
+  });
+  $('#editRequestModal').addEventListener('click', e => {
+    if (e.target.id === 'editRequestModal' || e.target.matches('[data-close]')) closeModal();
+  });
+  $('#editRequestForm').addEventListener('submit', e => updateRequest(e, r));
+}
+
+async function updateRequest(e, r) {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const button = e.target.querySelector('button[type="submit"]');
+  const valor = parseMoney(f.get('valor_cobrado'));
+  const changes = {
+    advogado_id: f.get('advogado_id') || null,
+    cliente_id: f.get('cliente_id') || null,
+    processo_id: f.get('processo_id') || null,
+    area_id: f.get('area_id') || null,
+    tipo_servico_id: f.get('tipo_servico_id') || null,
+    calculista_id: f.get('calculista_id') || null,
+    status: f.get('status') || 'NOVO',
+    prioridade: f.get('prioridade') || 'normal',
+    prazo: f.get('prazo') || null,
+    valor_cobrado: valor,
+    valor_final: valor,
+    origem: f.get('origem') || null,
+    tipo_entrega: f.get('tipo_entrega') || 'calculo',
+    descricao: String(f.get('descricao') || '').trim(),
+    cliente_antigo: f.get('origem') === 'Cliente antigo',
+    updated_at: new Date().toISOString()
+  };
+  button.disabled = true;
+  button.textContent = 'Salvando...';
+  const { error } = await supabaseClient.from('solicitacoes').update(changes).eq('id', r.id);
+  if (error) {
+    console.error('Erro ao editar solicitação:', error);
+    showToast('Não foi possível salvar as alterações.');
+    button.disabled = false;
+    button.textContent = 'Salvar alterações';
+    return;
+  }
+  const descricaoHistorico = 'Solicitação editada pelo administrador.';
+  await supabaseClient.from('historico_solicitacao').insert({ solicitacao_id: r.id, usuario_id: currentUser?.id || null, tipo_evento: 'EDICAO', descricao: descricaoHistorico });
+  closeModal();
+  await carregarSolicitacoes();
+  showToast('Solicitação atualizada. O calculista verá os dados atualizados.');
+  openDetail(r.id);
+  if (state.view === 'solicitacoes') render();
+}
+
+async function excluirSolicitacao(r) {
+  const confirmacao = window.confirm(`Excluir definitivamente a solicitação ${r.codigo}?\n\nOs registros relacionados, como histórico, pagamentos, retrabalhos e arquivos vinculados ao registro serão removidos conforme as regras do banco.\n\nEsta ação não pode ser desfeita.`);
+  if (!confirmacao) return;
+  const segunda = window.confirm(`Confirma novamente a exclusão de ${r.codigo}?`);
+  if (!segunda) return;
+  const { error } = await supabaseClient.from('solicitacoes').delete().eq('id', r.id);
+  if (error) {
+    console.error('Erro ao excluir solicitação:', error);
+    showToast('Não foi possível excluir a solicitação.');
+    return;
+  }
+  closeDrawer();
+  state.selected = null;
+  await carregarSolicitacoes();
+  render();
+  showToast(`${r.codigo} excluída.`);
+}
+
 function closeDrawer() {
   $('#drawerRoot').innerHTML = '';
 }
@@ -3627,6 +3800,20 @@ function initEventDelegation() {
     const openButton = event.target.closest('[data-open]');
     if (openButton) {
       openDetail(openButton.dataset.open);
+      return;
+    }
+
+    const editButton = event.target.closest('[data-edit-request]');
+    if (editButton) {
+      const r = db.requests.find(x => x.id === editButton.dataset.editRequest);
+      if (r && isAdministrador()) editRequestModal(r);
+      return;
+    }
+
+    const deleteButton = event.target.closest('[data-delete-request]');
+    if (deleteButton) {
+      const r = db.requests.find(x => x.id === deleteButton.dataset.deleteRequest);
+      if (r && isAdministrador()) excluirSolicitacao(r);
       return;
     }
 
