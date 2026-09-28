@@ -1242,3 +1242,30 @@ textarea:focus {
 .drawer-head .actions { display:flex; gap:8px; align-items:center; }
 .drawer-head .actions .btn { white-space:nowrap; }
 @media (max-width:700px){ .drawer-head .actions { flex-wrap:wrap; } }
+
+/* Ações discretas para editar cadastros relacionados */
+.select-with-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.select-with-action .input {
+  flex: 1;
+  min-width: 0;
+}
+.entity-edit-link {
+  border: 0;
+  background: transparent;
+  color: #6F747A;
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  padding: 4px 0;
+  opacity: .72;
+}
+.entity-edit-link:hover {
+  opacity: 1;
+  color: #172B46;
+  text-decoration: underline;
+}

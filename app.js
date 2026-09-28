@@ -3602,6 +3602,176 @@ function optionSelected(value, current) {
   return String(value || '') === String(current || '') ? ' selected' : '';
 }
 
+
+function entidadeNome(tipo, id) {
+  if (tipo === 'advogado') return db.advogados.find(x => x.id === id)?.nome || 'Advogado';
+  if (tipo === 'cliente') return db.clientes.find(x => x.id === id)?.nome || 'Cliente';
+  if (tipo === 'processo') return db.processos.find(x => x.id === id)?.numero_processo || 'Processo';
+  return 'Cadastro';
+}
+
+function quantidadeVinculos(tipo, id) {
+  return db.requests.filter(r =>
+    tipo === 'advogado' ? r.advogadoId === id :
+    tipo === 'cliente' ? r.clienteId === id :
+    tipo === 'processo' ? r.processoId === id : false
+  ).length;
+}
+
+function abrirEdicaoCadastro(tipo, id, requestId = null) {
+  if (!isAdministrador()) return;
+
+  let registro = null;
+  if (tipo === 'advogado') registro = db.advogados.find(x => x.id === id);
+  if (tipo === 'cliente') registro = db.clientes.find(x => x.id === id);
+  if (tipo === 'processo') registro = db.processos.find(x => x.id === id);
+  if (!registro) {
+    showToast('Cadastro não encontrado.');
+    return;
+  }
+
+  const vinculos = quantidadeVinculos(tipo, id);
+  const titulo = tipo === 'advogado' ? 'Editar advogado' : tipo === 'cliente' ? 'Editar cliente' : 'Editar processo';
+  const aviso = vinculos > 1
+    ? `Este cadastro está vinculado a ${vinculos} solicitações. A alteração será refletida em todas elas.`
+    : 'A alteração será refletida nas solicitações que utilizam este cadastro.';
+
+  let fields = '';
+  if (tipo === 'advogado') {
+    fields = `
+      <div class="form-grid">
+        <div class="field"><label>Nome *</label><input class="input" name="nome" required value="${escapeHtml(registro.nome || '')}"></div>
+        <div class="field"><label>OAB</label><input class="input" name="oab" value="${escapeHtml(registro.oab || '')}"></div>
+        <div class="field"><label>UF da OAB</label><input class="input" name="uf_oab" maxlength="2" value="${escapeHtml(registro.uf_oab || '')}"></div>
+        <div class="field"><label>Escritório</label><input class="input" name="escritorio" value="${escapeHtml(registro.escritorio || '')}"></div>
+        <div class="field"><label>Telefone</label><input class="input" name="telefone" value="${escapeHtml(registro.telefone || '')}"></div>
+        <div class="field"><label>WhatsApp</label><input class="input" name="whatsapp" value="${escapeHtml(registro.whatsapp || '')}"></div>
+        <div class="field"><label>E-mail</label><input class="input" type="email" name="email" value="${escapeHtml(registro.email || '')}"></div>
+        <div class="field"><label>Origem</label><select class="input" name="origem"><option value="">Selecione</option>${['Instagram','Site','WhatsApp','Indicação','Cliente antigo','LinkedIn','Outro'].map(v => `<option value="${v}"${registro.origem === v ? ' selected' : ''}>${v}</option>`).join('')}</select></div>
+        <div class="field full"><label>Observações</label><textarea class="input" name="observacoes" rows="4">${escapeHtml(registro.observacoes || '')}</textarea></div>
+      </div>`;
+  } else if (tipo === 'cliente') {
+    fields = `
+      <div class="form-grid">
+        <div class="field"><label>Nome *</label><input class="input" name="nome" required value="${escapeHtml(registro.nome || '')}"></div>
+        <div class="field"><label>CPF</label><input class="input" name="cpf" value="${escapeHtml(registro.cpf || '')}"></div>
+        <div class="field"><label>E-mail</label><input class="input" type="email" name="email" value="${escapeHtml(registro.email || '')}"></div>
+        <div class="field"><label>Telefone</label><input class="input" name="telefone" value="${escapeHtml(registro.telefone || '')}"></div>
+        <div class="field full"><label>Observações</label><textarea class="input" name="observacoes" rows="4">${escapeHtml(registro.observacoes || '')}</textarea></div>
+      </div>`;
+  } else {
+    const clienteProcessoOptions = db.clientes.map(c => `<option value="${c.id}"${optionSelected(c.id, registro.cliente_id)}>${escapeHtml(c.nome)}${c.cpf ? ` — ${escapeHtml(c.cpf)}` : ''}</option>`).join('');
+    fields = `
+      <div class="form-grid">
+        <div class="field full"><label>Número do processo *</label><input class="input" name="numero_processo" required value="${escapeHtml(registro.numero_processo || '')}"></div>
+        <div class="field"><label>Cliente do processo</label><select class="input" name="cliente_id"><option value="">Sem cliente</option>${clienteProcessoOptions}</select></div>
+        <div class="field"><label>Tribunal</label><input class="input" name="tribunal" value="${escapeHtml(registro.tribunal || '')}"></div>
+        <div class="field"><label>Vara</label><input class="input" name="vara" value="${escapeHtml(registro.vara || '')}"></div>
+        <div class="field"><label>Comarca</label><input class="input" name="comarca" value="${escapeHtml(registro.comarca || '')}"></div>
+        <div class="field full"><label>Observações</label><textarea class="input" name="observacoes" rows="4">${escapeHtml(registro.observacoes || '')}</textarea></div>
+      </div>`;
+  }
+
+  $('#modalRoot').innerHTML = `
+    <div class="modal-backdrop" id="entityEditModal">
+      <div class="modal" style="max-width:900px">
+        <div class="modal-head">
+          <div><h2>${titulo}</h2><small class="muted">${escapeHtml(entidadeNome(tipo, id))}</small></div>
+          <button class="close" data-close>×</button>
+        </div>
+        <form id="entityEditForm">
+          <div class="modal-body">
+            <div class="notice" style="margin-bottom:16px">${aviso}</div>
+            ${fields}
+          </div>
+          <div class="modal-foot">
+            <button type="button" class="btn" data-close>Cancelar</button>
+            <button type="submit" class="btn btn-primary">Salvar cadastro</button>
+          </div>
+        </form>
+      </div>
+    </div>`;
+
+  $('#entityEditModal').addEventListener('click', e => {
+    if (e.target.id === 'entityEditModal' || e.target.matches('[data-close]')) closeModal();
+  });
+  $('#entityEditForm').addEventListener('submit', e => salvarEdicaoCadastro(e, tipo, id, requestId));
+}
+
+async function salvarEdicaoCadastro(e, tipo, id, requestId = null) {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const button = e.target.querySelector('button[type="submit"]');
+  let changes;
+
+  if (tipo === 'advogado') {
+    changes = {
+      nome: String(f.get('nome') || '').trim(),
+      oab: String(f.get('oab') || '').trim() || null,
+      uf_oab: String(f.get('uf_oab') || '').trim().toUpperCase() || null,
+      escritorio: String(f.get('escritorio') || '').trim() || null,
+      telefone: String(f.get('telefone') || '').trim() || null,
+      whatsapp: String(f.get('whatsapp') || '').trim() || null,
+      email: String(f.get('email') || '').trim() || null,
+      origem: String(f.get('origem') || '').trim() || null,
+      observacoes: String(f.get('observacoes') || '').trim() || null,
+      updated_at: new Date().toISOString()
+    };
+  } else if (tipo === 'cliente') {
+    changes = {
+      nome: String(f.get('nome') || '').trim(),
+      cpf: String(f.get('cpf') || '').trim() || null,
+      email: String(f.get('email') || '').trim() || null,
+      telefone: String(f.get('telefone') || '').trim() || null,
+      observacoes: String(f.get('observacoes') || '').trim() || null,
+      updated_at: new Date().toISOString()
+    };
+  } else {
+    changes = {
+      numero_processo: String(f.get('numero_processo') || '').trim(),
+      cliente_id: f.get('cliente_id') || null,
+      tribunal: String(f.get('tribunal') || '').trim() || null,
+      vara: String(f.get('vara') || '').trim() || null,
+      comarca: String(f.get('comarca') || '').trim() || null,
+      observacoes: String(f.get('observacoes') || '').trim() || null,
+      updated_at: new Date().toISOString()
+    };
+  }
+
+  if (!changes.nome && (tipo === 'advogado' || tipo === 'cliente')) {
+    showToast('Informe o nome.');
+    return;
+  }
+  if (!changes.numero_processo && tipo === 'processo') {
+    showToast('Informe o número do processo.');
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = 'Salvando...';
+
+  const tabela = tipo === 'advogado' ? 'advogados' : tipo === 'cliente' ? 'clientes' : 'processos';
+  const { error } = await supabaseClient.from(tabela).update(changes).eq('id', id);
+  if (error) {
+    console.error(`Erro ao editar ${tipo}:`, error);
+    showToast(error.code === '23505' ? 'Já existe um cadastro com esse identificador.' : 'Não foi possível salvar o cadastro.');
+    button.disabled = false;
+    button.textContent = 'Salvar cadastro';
+    return;
+  }
+
+  await carregarSolicitacoes();
+  closeModal();
+  showToast('Cadastro atualizado. As solicitações relacionadas foram atualizadas.');
+
+  if (requestId) {
+    const atual = db.requests.find(x => x.id === requestId);
+    if (atual) openDetail(requestId);
+  } else {
+    render();
+  }
+}
+
 function editRequestModal(r) {
   const areaOptions = db.areas.filter(a => a.ativo !== false).map(a =>
     `<option value="${a.id}"${optionSelected(a.id, r.areaId)}>${a.nome}</option>`
@@ -3638,9 +3808,27 @@ function editRequestModal(r) {
               As alterações são salvas na mesma solicitação e ficarão disponíveis imediatamente para o calculista. A alteração também será registrada no histórico.
             </div>
             <div class="form-grid">
-              <div class="field"><label>Advogado</label><select class="input" name="advogado_id">${advogadoOptions}</select></div>
-              <div class="field"><label>Cliente</label><select class="input" name="cliente_id">${clienteOptions}</select></div>
-              <div class="field"><label>Processo</label><select class="input" name="processo_id"><option value="">Sem processo</option>${processoOptions}</select></div>
+              <div class="field">
+                <label>Advogado</label>
+                <div class="select-with-action">
+                  <select class="input" name="advogado_id">${advogadoOptions}</select>
+                  ${r.advogadoId ? `<button type="button" class="entity-edit-link" data-edit-entity="advogado" data-entity-id="${r.advogadoId}" data-request-id="${r.id}" title="Editar cadastro do advogado">✎ Editar cadastro</button>` : ''}
+                </div>
+              </div>
+              <div class="field">
+                <label>Cliente</label>
+                <div class="select-with-action">
+                  <select class="input" name="cliente_id">${clienteOptions}</select>
+                  ${r.clienteId ? `<button type="button" class="entity-edit-link" data-edit-entity="cliente" data-entity-id="${r.clienteId}" data-request-id="${r.id}" title="Editar cadastro do cliente">✎ Editar cadastro</button>` : ''}
+                </div>
+              </div>
+              <div class="field">
+                <label>Processo</label>
+                <div class="select-with-action">
+                  <select class="input" name="processo_id"><option value="">Sem processo</option>${processoOptions}</select>
+                  ${r.processoId ? `<button type="button" class="entity-edit-link" data-edit-entity="processo" data-entity-id="${r.processoId}" data-request-id="${r.id}" title="Editar cadastro do processo">✎ Editar cadastro</button>` : ''}
+                </div>
+              </div>
               <div class="field"><label>Área</label><select class="input" name="area_id" id="editArea">${areaOptions}</select></div>
               <div class="field"><label>Tipo de serviço</label><select class="input" name="tipo_servico_id" id="editTipo">${tipoOptions}</select></div>
               <div class="field"><label>Calculista</label><select class="input" name="calculista_id"><option value="">Não atribuído</option>${calcOptions}</select></div>
@@ -3782,6 +3970,20 @@ function initEventDelegation() {
         if (r && isAdministrador()) excluirSolicitacao(r);
         return;
       }
+    });
+  }
+
+  const modalRoot = $('#modalRoot');
+  if (modalRoot && !modalRoot.dataset.eventsReady) {
+    modalRoot.dataset.eventsReady = 'true';
+    modalRoot.addEventListener('click', event => {
+      const entityButton = event.target.closest('[data-edit-entity]');
+      if (!entityButton) return;
+      if (!isAdministrador()) return;
+      const entityType = entityButton.dataset.editEntity;
+      const entityId = entityButton.dataset.entityId;
+      const requestId = entityButton.dataset.requestId || null;
+      abrirEdicaoCadastro(entityType, entityId, requestId);
     });
   }
 
