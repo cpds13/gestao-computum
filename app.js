@@ -719,55 +719,82 @@ function abrirVincularPastaModal(r) {
   });
 }
 
+let renderEmAndamento = false;
+let renderPendente = false;
+let queryRenderTimer = null;
+
 function nav(view) {
+  if (!view || !views[view]) view = 'dashboard';
+
+  if (isCalculista() && view !== 'dashboard') {
+    view = 'dashboard';
+  }
+
+  if (state.view === view && !renderEmAndamento) {
+    activeNav();
+    return;
+  }
+
   state.view = view;
   state.query = '';
 
   render();
 
   if (window.innerWidth < 801) {
-    $('#sidebar').classList.remove('open');
+    const sidebar = $('#sidebar');
+    if (sidebar) sidebar.classList.remove('open');
   }
 }
 
 function activeNav() {
-  $$('.nav-item[data-view]').forEach(b =>
-    b.classList.toggle(
-      'active',
-      b.dataset.view === state.view
-    )
-  );
+  $$('.nav-item[data-view]').forEach(button => {
+    const ativo = button.dataset.view === state.view;
+    button.classList.toggle('active', ativo);
+    button.setAttribute('aria-current', ativo ? 'page' : 'false');
+  });
 }
 
 function render() {
-  if (isCalculista() && !['dashboard'].includes(state.view)) {
-    state.view = 'dashboard';
+  if (renderEmAndamento) {
+    renderPendente = true;
+    return;
   }
 
-  activeNav();
+  renderEmAndamento = true;
 
-  const titles = {
-    dashboard: 'Dashboard',
-    solicitacoes: 'Solicitações',
-    advogados: 'Advogados',
-    clientes: 'Clientes',
-    processos: 'Processos',
-    calculistas: 'Calculistas',
-    financeiro: 'Financeiro',
-    relatorios: 'Relatórios',
-    configuracoes: 'Configurações'
-  };
+  try {
+    if (isCalculista() && state.view !== 'dashboard') {
+      state.view = 'dashboard';
+    }
 
-  $('#breadcrumb').textContent =
-    titles[state.view] || 'Dashboard';
+    const titles = {
+      dashboard: 'Dashboard',
+      solicitacoes: 'Solicitações',
+      advogados: 'Advogados',
+      clientes: 'Clientes',
+      processos: 'Processos',
+      calculistas: 'Calculistas',
+      financeiro: 'Financeiro',
+      relatorios: 'Relatórios',
+      configuracoes: 'Configurações'
+    };
 
-  const fn =
-    views[state.view] ||
-    views.dashboard;
+    const content = $('#content');
+    const breadcrumb = $('#breadcrumb');
+    const fn = views[state.view] || views.dashboard;
 
-  $('#content').innerHTML = fn();
+    if (breadcrumb) breadcrumb.textContent = titles[state.view] || 'Dashboard';
+    if (content) content.innerHTML = fn();
 
-  bindView();
+    activeNav();
+  } finally {
+    renderEmAndamento = false;
+  }
+
+  if (renderPendente) {
+    renderPendente = false;
+    requestAnimationFrame(() => render());
+  }
 }
 
 function tutorialIcon(name) {
@@ -3547,206 +3574,116 @@ function closeDrawer() {
 }
 
 function bindView() {
+  // A navegação e os controles dinâmicos usam delegação de eventos.
+  // Isso evita registrar novos listeners a cada renderização.
+}
 
-  $$('[data-view-link]')
-    .forEach(
-      b =>
-        b.addEventListener(
-          'click',
-          () =>
-            nav(
-              b.dataset.viewLink
-            )
-        )
-    );
+function initEventDelegation() {
+  const content = $('#content');
+  const menu = $('#sidebar');
 
-  $$('[data-tutorial]').forEach(button => {
-    button.addEventListener('click', () => {
-      const panel = button.closest('#content')?.querySelector('[data-tutorial-panel]');
-      if (!panel) return;
-      panel.hidden = !panel.hidden;
-      button.classList.toggle('active', !panel.hidden);
+  if (menu && !menu.dataset.eventsReady) {
+    menu.dataset.eventsReady = 'true';
+    menu.addEventListener('click', event => {
+      const button = event.target.closest('.nav-item[data-view]');
+      if (!button || !menu.contains(button)) return;
+      event.preventDefault();
+      nav(button.dataset.view);
     });
+  }
+
+  if (!content || content.dataset.eventsReady) return;
+  content.dataset.eventsReady = 'true';
+
+  content.addEventListener('click', event => {
+    const tutorial = event.target.closest('[data-tutorial]');
+    if (tutorial) {
+      const panel = tutorial.closest('#content')?.querySelector('[data-tutorial-panel]');
+      if (panel) {
+        panel.hidden = !panel.hidden;
+        tutorial.classList.toggle('active', !panel.hidden);
+      }
+      return;
+    }
+
+    const newButton = event.target.closest('[data-new]');
+    if (newButton) {
+      openNew();
+      return;
+    }
+
+    const viewLink = event.target.closest('[data-view-link]');
+    if (viewLink) {
+      nav(viewLink.dataset.viewLink);
+      return;
+    }
+
+    const calcButton = event.target.closest('[data-open-calculista]');
+    if (calcButton) {
+      openCalculistaDetail(calcButton.dataset.openCalculista);
+      return;
+    }
+
+    const openButton = event.target.closest('[data-open]');
+    if (openButton) {
+      openDetail(openButton.dataset.open);
+      return;
+    }
+
+    const systemButton = event.target.closest('[data-system]');
+    if (systemButton) {
+      showToast('Cadastro de sistemas será conectado ao Supabase.');
+    }
   });
 
-  $$('[data-new]')
-    .forEach(
-      b =>
-        b.addEventListener(
-          'click',
-          openNew
-        )
-    );
+  content.addEventListener('input', event => {
+    const q = event.target.closest('#q');
+    if (q) {
+      state.query = q.value;
+      clearTimeout(queryRenderTimer);
+      queryRenderTimer = setTimeout(() => render(), 120);
+      return;
+    }
 
-  $$('[data-open]')
-    .forEach(
-      el =>
-        el.addEventListener(
-          'click',
-          () =>
-            openDetail(
-              el.dataset.open
-            )
-        )
-    );
+    const processSearch = event.target.closest('#processSearch');
+    if (processSearch) {
+      const table = $('#processTable');
+      if (table) table.innerHTML = processTable(processSearch.value);
+    }
+  });
 
-  $$('[data-open-calculista]').forEach(el =>
-    el.addEventListener('click', () => openCalculistaDetail(el.dataset.openCalculista))
-  );
+  content.addEventListener('change', event => {
+    const status = event.target.closest('#filterStatus');
+    if (status) {
+      state.status = status.value;
+      render();
+      return;
+    }
 
-  const q = $('#q');
+    const area = event.target.closest('#filterArea');
+    if (area) {
+      state.area = area.value;
+      render();
+      return;
+    }
 
-  if (q) {
-    q.addEventListener(
-      'input',
-      () => {
-        state.query =
-          q.value;
+    const viewMode = event.target.closest('#viewMode');
+    if (viewMode) {
+      const list = $('#requestList');
+      if (!list) return;
 
-        render();
+      if (viewMode.value === 'kanban') {
+        list.innerHTML = kanban();
+      } else {
+        let rows = db.requests.filter(r =>
+          (!state.query || `${r.codigo} ${r.advogado} ${r.cliente}`.toLowerCase().includes(state.query.toLowerCase())) &&
+          (!state.status || r.status === state.status) &&
+          (!state.area || r.area === state.area)
+        );
+        list.innerHTML = tableRequests(rows);
       }
-    );
-  }
-
-  const fs =
-    $('#filterStatus');
-
-  if (fs) {
-    fs.addEventListener(
-      'change',
-      () => {
-        state.status =
-          fs.value;
-
-        render();
-      }
-    );
-  }
-
-  const fa =
-    $('#filterArea');
-
-  if (fa) {
-    fa.addEventListener(
-      'change',
-      () => {
-        state.area =
-          fa.value;
-
-        render();
-      }
-    );
-  }
-
-  const ps =
-    $('#processSearch');
-
-  if (ps) {
-    ps.addEventListener(
-      'input',
-      () => {
-
-        $('#processTable')
-          .innerHTML =
-          processTable(
-            ps.value
-          );
-
-        $$('[data-open]')
-          .forEach(
-            el =>
-              el.addEventListener(
-                'click',
-                () =>
-                  openDetail(
-                    el.dataset.open
-                  )
-              )
-          );
-      }
-    );
-  }
-
-  const vm =
-    $('#viewMode');
-
-  if (vm) {
-
-    vm.addEventListener(
-      'change',
-      () => {
-
-        if (
-          vm.value ===
-          'kanban'
-        ) {
-
-          $('#requestList')
-            .innerHTML =
-            kanban();
-
-        } else {
-
-          let rows =
-            db.requests.filter(
-              r =>
-                (
-                  !state.query ||
-                  `
-                    ${r.codigo}
-                    ${r.advogado}
-                    ${r.cliente}
-                  `
-                    .toLowerCase()
-                    .includes(
-                      state.query.toLowerCase()
-                    )
-                ) &&
-                (
-                  !state.status ||
-                  r.status ===
-                    state.status
-                ) &&
-                (
-                  !state.area ||
-                  r.area ===
-                    state.area
-                )
-            );
-
-          $('#requestList')
-            .innerHTML =
-            tableRequests(
-              rows
-            );
-
-          $$('[data-open]')
-            .forEach(
-              el =>
-                el.addEventListener(
-                  'click',
-                  () =>
-                    openDetail(
-                      el.dataset.open
-                    )
-                )
-            );
-        }
-      }
-    );
-  }
-
-  $$('[data-system]')
-    .forEach(
-      b =>
-        b.addEventListener(
-          'click',
-          () =>
-            showToast(
-              'Cadastro de sistemas será conectado ao Supabase.'
-            )
-        )
-    );
+    }
+  });
 }
 
 function kanban() {
@@ -3831,16 +3768,7 @@ $('#menuBtn').addEventListener(
     )
 );
 
-$$('[data-view]').forEach(
-  b =>
-    b.addEventListener(
-      'click',
-      () =>
-        nav(
-          b.dataset.view
-        )
-    )
-);
+initEventDelegation();
 
 (async function iniciarAplicacao() {
 
