@@ -60,6 +60,18 @@ async function carregarSessao() {
   return true;
 }
 
+function isCalculista() {
+  return currentProfile?.perfil === 'calculista';
+}
+
+function minhasSolicitacoes() {
+  if (!isCalculista()) return [];
+  const nome = (currentProfile?.nome || '').trim().toLowerCase();
+  return db.requests.filter(r =>
+    (r.calculista || '').trim().toLowerCase() === nome
+  );
+}
+
 function atualizarUsuarioInterface() {
   if (!currentProfile) return;
 
@@ -85,6 +97,14 @@ function atualizarUsuarioInterface() {
   if (sidebarAvatar) sidebarAvatar.textContent = inicial;
   if (topbarName) topbarName.textContent = nome;
   if (topbarAvatar) topbarAvatar.textContent = inicial;
+
+  if (currentProfile.perfil === 'calculista') {
+    document.querySelectorAll('.nav-item[data-view]').forEach(button => {
+      button.style.display = button.dataset.view === 'dashboard' ? '' : 'none';
+    });
+    const dashboardButton = document.querySelector('.nav-item[data-view="dashboard"]');
+    if (dashboardButton) dashboardButton.innerHTML = '<span>∑</span> Minha produção';
+  }
 }
 
 function mostrarLogin(mensagem = '') {
@@ -720,6 +740,10 @@ function activeNav() {
 }
 
 function render() {
+  if (isCalculista() && !['dashboard'].includes(state.view)) {
+    state.view = 'dashboard';
+  }
+
   activeNav();
 
   const titles = {
@@ -828,9 +852,172 @@ function tableRequests(rows) {
   `;
 }
 
+function calculistaDashboard() {
+  const rows = minhasSolicitacoes();
+  const abertas = rows.filter(r => !['CONCLUÍDO', 'CANCELADO'].includes(r.status));
+  const novas = rows.filter(r => r.status === 'NOVO');
+  const calculo = rows.filter(r => r.status === 'EM CÁLCULO');
+  const revisao = rows.filter(r => r.status === 'EM REVISÃO');
+  const atrasadas = abertas.filter(r => daysTo(r.prazo) < 0);
+
+  const tarefaRow = r => `
+    <tr data-open-calculista="${r.id}" style="cursor:pointer">
+      <td><strong>${r.codigo}</strong></td>
+      <td>${r.cliente}</td>
+      <td>${r.tipo}</td>
+      <td>${r.processo}</td>
+      <td>${fmtDate(r.prazo)}</td>
+      <td><span class="status ${statusClass(r.status)}">${statusLabel[r.status] || r.status}</span></td>
+      <td>${r.prioridade}</td>
+    </tr>`;
+
+  return pageHead(
+    `Olá, ${currentProfile?.nome || 'Calculista'}`,
+    'Painel de produção — suas solicitações atribuídas.',
+    ''
+  ) + `
+    <div class="grid kpi-grid">
+      ${kpi('Novas', novas.length, 'Aguardando início')}
+      ${kpi('Em cálculo', calculo.length, 'Trabalhos em andamento')}
+      ${kpi('Em revisão', revisao.length, 'Aguardando conferência')}
+      ${kpi('Atrasadas', atrasadas.length, 'Exigem atenção')}
+    </div>
+
+    <section class="card" style="margin-top:18px">
+      <div class="card-head">
+        <div>
+          <h2>Minhas solicitações</h2>
+          <p class="muted" style="margin-top:4px">Clique em uma solicitação para abrir os dados de produção.</p>
+        </div>
+      </div>
+      ${rows.length ? `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Código</th><th>Cliente</th><th>Serviço</th><th>Processo</th><th>Prazo</th><th>Status</th><th>Prioridade</th>
+              </tr>
+            </thead>
+            <tbody>${rows.map(tarefaRow).join('')}</tbody>
+          </table>
+        </div>` : `
+        <div class="empty">Nenhuma solicitação foi atribuída a você.</div>`}
+    </section>
+  `;
+}
+
+async function alterarStatusCalculista(id, novoStatus, descricao) {
+  const r = db.requests.find(x => x.id === id);
+  if (!r) return;
+
+  const statusPermitidos = ['EM_CALCULO', 'EM_REVISAO', 'CONCLUIDO'];
+  if (!statusPermitidos.includes(novoStatus)) return;
+
+  const update = { status: novoStatus, updated_at: new Date().toISOString() };
+  if (novoStatus === 'EM_CALCULO' && !r.data_inicio) update.data_inicio = new Date().toISOString();
+  if (novoStatus === 'CONCLUIDO') update.data_conclusao = new Date().toISOString();
+
+  const { error } = await supabaseClient
+    .from('solicitacoes')
+    .update(update)
+    .eq('id', id);
+
+  if (error) {
+    console.error('Erro ao atualizar status:', error);
+    showToast('Não foi possível atualizar o status.');
+    return;
+  }
+
+  await supabaseClient.from('historico_solicitacao').insert({
+    solicitacao_id: id,
+    usuario_id: currentUser.id,
+    tipo_evento: 'STATUS',
+    descricao: descricao || `Status alterado para ${novoStatus}`,
+    data_hora: new Date().toISOString()
+  });
+
+  await carregarSolicitacoes();
+  render();
+  showToast('Status atualizado.');
+}
+
+function openCalculistaDetail(id) {
+  const r = minhasSolicitacoes().find(x => x.id === id);
+  if (!r) return;
+
+  const botoes = [];
+  if (r.status === 'NOVO') {
+    botoes.push(`<button class="btn btn-primary" data-calc-action="start" data-id="${r.id}">▶ Iniciar cálculo</button>`);
+  }
+  if (r.status === 'EM CÁLCULO') {
+    botoes.push(`<button class="btn btn-primary" data-calc-action="review" data-id="${r.id}">✓ Enviar para revisão</button>`);
+  }
+  if (r.status === 'EM REVISÃO') {
+    botoes.push(`<button class="btn btn-primary" data-calc-action="done" data-id="${r.id}">✓ Marcar como concluído</button>`);
+  }
+
+  const root = document.getElementById('drawerRoot');
+  root.innerHTML = `
+    <div class="drawer-backdrop" id="calcDrawerBackdrop">
+      <aside class="drawer">
+        <div class="drawer-head">
+          <div><span class="eyebrow">PRODUÇÃO</span><h2>${r.codigo}</h2></div>
+          <button class="icon-btn" data-calc-close>×</button>
+        </div>
+        <div class="drawer-body">
+          <div class="detail-status"><span class="status ${statusClass(r.status)}">${statusLabel[r.status] || r.status}</span></div>
+          <div class="detail-grid">
+            <div><small>Cliente</small><strong>${r.cliente}</strong></div>
+            <div><small>Processo</small><strong>${r.processo}</strong></div>
+            <div><small>Serviço</small><strong>${r.tipo}</strong></div>
+            <div><small>Área</small><strong>${r.area}</strong></div>
+            <div><small>Prazo</small><strong>${fmtDate(r.prazo)}</strong></div>
+            <div><small>Prioridade</small><strong>${r.prioridade}</strong></div>
+          </div>
+
+          <div class="card" style="margin-top:18px;padding:16px">
+            <h3>Observações para o cálculo</h3>
+            <p class="muted" style="margin-top:8px;white-space:pre-wrap">${r.descricao || 'Nenhuma observação registrada.'}</p>
+          </div>
+
+          <div class="card" style="margin-top:18px;padding:16px">
+            <h3>Documentos</h3>
+            <p class="muted" style="margin:6px 0 14px">Os documentos ficam na pasta privada da solicitação.</p>
+            ${r.drive ? `<a class="btn btn-secondary" href="${r.drive}" target="_blank" rel="noopener noreferrer">📁 Abrir pasta no Drive</a>` : '<div class="empty">Pasta do Drive ainda não vinculada.</div>'}
+          </div>
+
+          <div class="card" style="margin-top:18px;padding:16px">
+            <h3>Execução</h3>
+            <p class="muted" style="margin:6px 0 14px">${r.sistema ? `Sistema indicado: ${r.sistema}` : 'Sistema especializado não informado.'}</p>
+            <div class="actions">${botoes.join('') || '<span class="muted">Nenhuma ação disponível neste status.</span>'}</div>
+          </div>
+        </div>
+      </aside>
+    </div>`;
+
+  document.getElementById('calcDrawerBackdrop').addEventListener('click', async e => {
+    if (e.target.id === 'calcDrawerBackdrop' || e.target.matches('[data-calc-close]')) {
+      root.innerHTML = '';
+      return;
+    }
+    const btn = e.target.closest('[data-calc-action]');
+    if (!btn) return;
+    const action = btn.dataset.calcAction;
+    const status = action === 'start' ? 'EM_CALCULO' : action === 'review' ? 'EM_REVISAO' : 'CONCLUIDO';
+    const desc = action === 'start' ? 'Calculista iniciou o cálculo.' : action === 'review' ? 'Cálculo enviado para revisão.' : 'Cálculo marcado como concluído pelo calculista.';
+    btn.disabled = true;
+    await alterarStatusCalculista(id, status, desc);
+    root.innerHTML = '';
+  });
+}
+
 const views = {
 
   dashboard() {
+    if (isCalculista()) {
+      return calculistaDashboard();
+    }
+
     const open =
       db.requests.filter(
         r =>
@@ -3357,6 +3544,10 @@ function bindView() {
             )
         )
     );
+
+  $$('[data-open-calculista]').forEach(el =>
+    el.addEventListener('click', () => openCalculistaDetail(el.dataset.openCalculista))
+  );
 
   const q = $('#q');
 
