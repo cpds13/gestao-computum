@@ -3765,6 +3765,26 @@ function initEventDelegation() {
     });
   }
 
+  const drawerRoot = $('#drawerRoot');
+  if (drawerRoot && !drawerRoot.dataset.eventsReady) {
+    drawerRoot.dataset.eventsReady = 'true';
+    drawerRoot.addEventListener('click', event => {
+      const editButton = event.target.closest('[data-edit-request]');
+      if (editButton && drawerRoot.contains(editButton)) {
+        const r = db.requests.find(x => x.id === editButton.dataset.editRequest);
+        if (r && isAdministrador()) editRequestModal(r);
+        return;
+      }
+
+      const deleteButton = event.target.closest('[data-delete-request]');
+      if (deleteButton && drawerRoot.contains(deleteButton)) {
+        const r = db.requests.find(x => x.id === deleteButton.dataset.deleteRequest);
+        if (r && isAdministrador()) excluirSolicitacao(r);
+        return;
+      }
+    });
+  }
+
   if (!content || content.dataset.eventsReady) return;
   content.dataset.eventsReady = 'true';
 
