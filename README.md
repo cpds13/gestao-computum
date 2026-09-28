@@ -243,3 +243,7 @@ A migration `003_documentos_forms_manual.sql` documenta a alteração prevista n
 ## V9 — Google Forms + Apps Script
 
 O recebimento de documentos utiliza o Google Forms e um Apps Script vinculado à planilha de respostas. Os arquivos são organizados automaticamente em `Computum/Gestão/CJ-2026-xxxxx/01 - Documentos recebidos`, com subpastas padrão para Cálculos, Parecer e Retrabalho. O frontend possui ação para abrir o Forms e vincular a pasta privada do Drive à solicitação. Não há dependência de Google Cloud ou cartão.
+
+
+## V12 — correção de navegação
+Corrigido acúmulo de listeners na navegação lateral, que podia causar múltiplas renderizações ao clicar entre áreas e deixar a interface lenta ou travada após várias navegações.

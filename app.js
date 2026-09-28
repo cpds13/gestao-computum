@@ -770,29 +770,44 @@ function render() {
   bindView();
 }
 
-function tutorialForView(view) {
-  const guides = {
-    dashboard: { icon: '⌂', title: 'Visão geral', steps: ['Acompanhe o volume de solicitações e os valores em aberto.', 'Use os atalhos para acessar rapidamente as demandas que precisam de atenção.', 'Abra uma solicitação para consultar documentos, responsáveis, prazo e histórico.'] },
-    solicitacoes: { icon: '▣', title: 'Como funciona Solicitações', steps: ['Cadastre a demanda com advogado, cliente, processo, serviço e prazo.', 'Atribua o calculista e acompanhe o status da produção.', 'Use os detalhes para enviar documentos pelo Forms e acessar a pasta no Drive.'] },
-    advogados: { icon: '♙', title: 'Como funciona Advogados', steps: ['Cadastre quem solicita os cálculos.', 'Mantenha os dados de contato organizados para reutilização nas solicitações.', 'Acesse as solicitações relacionadas a cada advogado.'] },
-    clientes: { icon: '♧', title: 'Como funciona Clientes', steps: ['Cadastre os clientes atendidos pelo escritório.', 'Centralize os dados básicos para evitar novos cadastros repetidos.', 'Use o cadastro como referência ao criar solicitações e processos.'] },
-    processos: { icon: '§', title: 'Como funciona Processos', steps: ['Registre os números dos processos e seus dados de referência.', 'Associe processos às solicitações quando necessário.', 'Consulte rapidamente o histórico relacionado ao processo.'] },
-    calculistas: { icon: '∑', title: 'Como funciona Calculistas', steps: ['Cadastre os profissionais que executam os cálculos.', 'Mantenha os calculistas ativos disponíveis para atribuição.', 'A distribuição das solicitações determina o que aparece no painel de produção de cada calculista.'] },
-    financeiro: { icon: 'R$', title: 'Como funciona Financeiro', steps: ['Acompanhe valores cobrados e recebidos.', 'Registre pagamentos vinculados às solicitações.', 'Use essas informações para acompanhar saldos pendentes.'] },
-    relatorios: { icon: '◫', title: 'Como funciona Relatórios', steps: ['Consulte os dados consolidados da operação.', 'Use os relatórios para acompanhar volume, prazos e situação das demandas.', 'Os relatórios servem como apoio à gestão e não alteram os registros.'] },
-    configuracoes: { icon: '⚙', title: 'Como funciona Configurações', steps: ['Consulte as configurações gerais do sistema.', 'Mantenha os parâmetros e integrações organizados.', 'Alterações sensíveis devem ser feitas somente por usuários autorizados.'] }
+function tutorialIcon(name) {
+  const icons = {
+    dashboard: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5M9 21v-6h6v6"/></svg>',
+    solicitacoes: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3.5h6M8 8h8M8 12h8M8 16h5"/></svg>',
+    advogados: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 20c.7-3.5 3-5.3 6.5-5.3s5.8 1.8 6.5 5.3"/></svg>',
+    clientes: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.8 20c.6-3.4 2.4-5.1 5.2-5.1s4.6 1.7 5.2 5.1"/><path d="M16 5.5a3 3 0 0 1 0 5.8M16 14.9c2.5.3 4 2 4.4 4.1"/></svg>',
+    processos: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h5M10 12h5M10 16h5"/></svg>',
+    calculistas: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><rect x="7" y="6" width="10" height="3" rx="1"/><path d="M8 13h2M14 13h2M8 17h2M14 17h2"/></svg>',
+    financeiro: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M14.8 8.7c-.7-.7-1.7-1.1-2.9-1.1-1.8 0-3 .8-3 2 0 3.1 6 1.4 6 4.5 0 1.2-1.2 2.1-3.1 2.1-1.3 0-2.4-.4-3.2-1.2M12 6v12"/></svg>',
+    relatorios: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V9M12 19V5M19 19v-7"/><path d="M3 19h18"/></svg>',
+    configuracoes: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/><path d="m19 13.5 1.2 1-.9 1.6-1.5-.5a7.8 7.8 0 0 1-1.4 1.4l.5 1.5-1.6.9-1-1.2a7.5 7.5 0 0 1-1.9.3l-.5 1.5h-1.8l-.5-1.5a7.5 7.5 0 0 1-1.9-.3l-1 1.2-1.6-.9.5-1.5a7.8 7.8 0 0 1-1.4-1.4l-1.5.5-.9-1.6 1.2-1a7.5 7.5 0 0 1-.2-1.5c0-.5.1-1 .2-1.5l-1.2-1 .9-1.6 1.5.5A7.8 7.8 0 0 1 7.2 7l-.5-1.5 1.6-.9 1 1.2a7.5 7.5 0 0 1 1.9-.3l.5-1.5h1.8l.5 1.5a7.5 7.5 0 0 1 1.9.3l1-1.2 1.6.9-.5 1.5a7.8 7.8 0 0 1 1.4 1.4l1.5-.5.9 1.6-1.2 1c.1.5.2 1 .2 1.5s-.1 1-.2 1.5Z"/></svg>'
   };
-  return guides[view] || guides.dashboard;
+  return icons[name] || icons.dashboard;
+}
+
+function tutorialForView(view) {
+  const data = {
+    dashboard: { title: 'Visão geral', steps: ['Acompanhe o volume de solicitações e os valores em aberto.', 'Use os atalhos para acessar rapidamente as demandas que precisam de atenção.', 'Abra uma solicitação para consultar documentos, responsáveis, prazo e histórico.'] },
+    solicitacoes: { title: 'Como funciona Solicitações', steps: ['Cadastre a demanda com advogado, cliente, processo, serviço e prazo.', 'Atribua o calculista e acompanhe o status da produção.', 'Use os detalhes para enviar documentos pelo Forms e acessar a pasta no Drive.'] },
+    advogados: { title: 'Como funciona Advogados', steps: ['Cadastre quem solicita os cálculos.', 'Mantenha os dados de contato organizados para reutilização nas solicitações.', 'Acesse as solicitações relacionadas a cada advogado.'] },
+    clientes: { title: 'Como funciona Clientes', steps: ['Cadastre os clientes atendidos pelo escritório.', 'Centralize os dados básicos para evitar novos cadastros repetidos.', 'Use o cadastro como referência ao criar solicitações e processos.'] },
+    processos: { title: 'Como funciona Processos', steps: ['Registre os números dos processos e seus dados de referência.', 'Associe processos às solicitações quando necessário.', 'Consulte rapidamente o histórico relacionado ao processo.'] },
+    calculistas: { title: 'Como funciona Calculistas', steps: ['Cadastre os profissionais que executam os cálculos.', 'Mantenha os calculistas ativos disponíveis para atribuição.', 'A distribuição das solicitações determina o que aparece no painel de produção de cada calculista.'] },
+    financeiro: { title: 'Como funciona Financeiro', steps: ['Acompanhe valores cobrados e recebidos.', 'Registre pagamentos vinculados às solicitações.', 'Use essas informações para acompanhar saldos pendentes.'] },
+    relatorios: { title: 'Como funciona Relatórios', steps: ['Consulte os dados consolidados da operação.', 'Use os relatórios para acompanhar volume, prazos e situação das demandas.', 'Os relatórios servem como apoio à gestão e não alteram os registros.'] },
+    configuracoes: { title: 'Como funciona Configurações', steps: ['Consulte as configurações gerais do sistema.', 'Mantenha os parâmetros e integrações organizados.', 'Alterações sensíveis devem ser feitas somente por usuários autorizados.'] }
+  };
+  return { ...(data[view] || data.dashboard), icon: tutorialIcon(view) };
 }
 
 function tutorialBlock(view) {
   const g = tutorialForView(view);
   return `
     <div class="tutorial-panel" data-tutorial-panel hidden>
-      <div class="tutorial-icon" aria-hidden="true">${g.icon}</div>
+      
       <div class="tutorial-content">
         <strong>${g.title}</strong>
-        <ol>${g.steps.map((step, i) => `<li><span class="tutorial-step">${i + 1}</span>${step}</li>`).join('')}</ol>
+        <ol>${g.steps.map((step, i) => `<li><span class="tutorial-step">${i + 1}</span><span class="tutorial-step-text">${step}</span></li>`).join('')}</ol>
       </div>
     </div>
   `;
@@ -3532,18 +3547,6 @@ function closeDrawer() {
 }
 
 function bindView() {
-
-  $$('[data-view]')
-    .forEach(
-      b =>
-        b.addEventListener(
-          'click',
-          () =>
-            nav(
-              b.dataset.view
-            )
-        )
-    );
 
   $$('[data-view-link]')
     .forEach(
