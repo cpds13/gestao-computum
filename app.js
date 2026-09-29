@@ -3989,6 +3989,34 @@ function editRequestModal(r) {
     if (e.target.id === 'editRequestModal' || e.target.matches('[data-close]')) closeModal();
   });
 
+  // Ações dos cadastros relacionados: listeners diretos no modal.
+  // Mantemos também a delegação global como fallback, mas o listener direto
+  // garante que o clique funcione mesmo após a reconstrução do modal.
+  $('#editRequestModal').querySelectorAll('[data-edit-entity]').forEach(button => {
+    button.addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!isAdministrador()) return;
+      abrirEdicaoCadastro(
+        button.dataset.editEntity,
+        button.dataset.entityId,
+        button.dataset.requestId || r.id
+      );
+    });
+  });
+
+  $('#editRequestModal').querySelectorAll('[data-create-process-for-request]').forEach(button => {
+    button.addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!isAdministrador()) return;
+      abrirNovoProcessoParaSolicitacao(
+        button.dataset.createProcessForRequest,
+        button.dataset.clienteId || r.clienteId || null
+      );
+    });
+  });
+
   $('#editRequestForm').addEventListener('submit', e => updateRequest(e, r));
 }
 
