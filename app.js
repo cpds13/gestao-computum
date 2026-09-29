@@ -3989,29 +3989,6 @@ function editRequestModal(r) {
     if (e.target.id === 'editRequestModal' || e.target.matches('[data-close]')) closeModal();
   });
 
-  // Os botões de edição de cadastros pertencem ao modal atual.
-  // Registramos os eventos somente na criação deste modal, evitando
-  // qualquer acúmulo de listeners na navegação do sistema.
-  $('#editRequestModal').querySelectorAll('[data-edit-entity]').forEach(button => {
-    button.addEventListener('click', event => {
-      event.preventDefault();
-      event.stopPropagation();
-      abrirEdicaoCadastro(
-        button.dataset.editEntity,
-        button.dataset.entityId,
-        button.dataset.requestId || null
-      );
-    });
-  });
-
-  $('#editRequestModal').querySelectorAll('[data-create-process-for-request]').forEach(button => {
-    button.addEventListener('click', event => {
-      event.preventDefault();
-      event.stopPropagation();
-      abrirNovoProcessoParaSolicitacao(button.dataset.createProcessForRequest, r.clienteId || null);
-    });
-  });
-
   $('#editRequestForm').addEventListener('submit', e => updateRequest(e, r));
 }
 
@@ -4118,17 +4095,33 @@ function initEventDelegation() {
     });
   }
 
-  const modalRoot = $('#modalRoot');
-  if (modalRoot && !modalRoot.dataset.eventsReady) {
-    modalRoot.dataset.eventsReady = 'true';
-    modalRoot.addEventListener('click', event => {
+  // Ações de edição/cadastro de entidades são delegadas ao documento.
+  // Isso continua funcionando mesmo quando #modalRoot troca seu innerHTML.
+  if (!document.documentElement.dataset.entityActionsReady) {
+    document.documentElement.dataset.entityActionsReady = 'true';
+    document.addEventListener('click', event => {
       const entityButton = event.target.closest('[data-edit-entity]');
-      if (!entityButton) return;
-      if (!isAdministrador()) return;
-      const entityType = entityButton.dataset.editEntity;
-      const entityId = entityButton.dataset.entityId;
-      const requestId = entityButton.dataset.requestId || null;
-      abrirEdicaoCadastro(entityType, entityId, requestId);
+      if (entityButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!isAdministrador()) return;
+        const entityType = entityButton.dataset.editEntity;
+        const entityId = entityButton.dataset.entityId;
+        const requestId = entityButton.dataset.requestId || null;
+        abrirEdicaoCadastro(entityType, entityId, requestId);
+        return;
+      }
+
+      const createProcessButton = event.target.closest('[data-create-process-for-request]');
+      if (createProcessButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!isAdministrador()) return;
+        abrirNovoProcessoParaSolicitacao(
+          createProcessButton.dataset.createProcessForRequest,
+          createProcessButton.dataset.clienteId || null
+        );
+      }
     });
   }
 
