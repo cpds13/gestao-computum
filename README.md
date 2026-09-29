@@ -247,3 +247,7 @@ O recebimento de documentos utiliza o Google Forms e um Apps Script vinculado à
 
 ## V12 — correção de navegação
 Corrigido acúmulo de listeners na navegação lateral, que podia causar múltiplas renderizações ao clicar entre áreas e deixar a interface lenta ou travada após várias navegações.
+
+
+## V18
+Correções na edição de cadastros relacionados e possibilidade de cadastrar/vincular processo diretamente pela edição da solicitação.

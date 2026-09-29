@@ -3698,6 +3698,127 @@ function abrirEdicaoCadastro(tipo, id, requestId = null) {
   $('#entityEditForm').addEventListener('submit', e => salvarEdicaoCadastro(e, tipo, id, requestId));
 }
 
+
+function abrirNovoProcessoParaSolicitacao(requestId, clienteId = null) {
+  if (!isAdministrador()) return;
+
+  const clienteOptions = db.clientes.map(c =>
+    `<option value="${c.id}"${optionSelected(c.id, clienteId)}>${escapeHtml(c.nome)}${c.cpf ? ` — ${escapeHtml(c.cpf)}` : ''}</option>`
+  ).join('');
+
+  $('#modalRoot').innerHTML = `
+    <div class="modal-backdrop" id="newProcessModal">
+      <div class="modal" style="max-width:760px">
+        <div class="modal-head">
+          <div><h2>Cadastrar processo</h2><small class="muted">Será vinculado à solicitação selecionada.</small></div>
+          <button class="close" data-close>×</button>
+        </div>
+        <form id="newProcessForm">
+          <div class="modal-body">
+            <div class="notice" style="margin-bottom:16px">
+              Informe o número correto do processo. Depois de salvar, ele ficará vinculado à solicitação.
+            </div>
+            <div class="form-grid">
+              <div class="field full"><label>Número do processo *</label><input class="input" name="numero_processo" required placeholder="0000000-00.0000.0.00.0000"></div>
+              <div class="field"><label>Cliente</label><select class="input" name="cliente_id"><option value="">Sem cliente</option>${clienteOptions}</select></div>
+              <div class="field"><label>Tribunal</label><input class="input" name="tribunal"></div>
+              <div class="field"><label>Vara</label><input class="input" name="vara"></div>
+              <div class="field"><label>Comarca</label><input class="input" name="comarca"></div>
+              <div class="field full"><label>Observações</label><textarea class="input" name="observacoes" rows="4"></textarea></div>
+            </div>
+          </div>
+          <div class="modal-foot">
+            <button type="button" class="btn" data-close>Cancelar</button>
+            <button type="submit" class="btn btn-primary">Cadastrar e vincular</button>
+          </div>
+        </form>
+      </div>
+    </div>`;
+
+  $('#newProcessModal').addEventListener('click', e => {
+    if (e.target.id === 'newProcessModal' || e.target.matches('[data-close]')) closeModal();
+  });
+  $('#newProcessForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const numero = String(f.get('numero_processo') || '').trim();
+    const button = e.target.querySelector('button[type="submit"]');
+    if (!numero) {
+      showToast('Informe o número do processo.');
+      return;
+    }
+    button.disabled = true;
+    button.textContent = 'Salvando...';
+
+    const existing = await supabaseClient
+      .from('processos')
+      .select('id, numero_processo')
+      .eq('numero_processo', numero)
+      .limit(1)
+      .maybeSingle();
+
+    if (existing.error) {
+      console.error(existing.error);
+      showToast('Não foi possível verificar o processo.');
+      button.disabled = false;
+      button.textContent = 'Cadastrar e vincular';
+      return;
+    }
+
+    let processo = existing.data;
+    if (processo) {
+      const confirma = window.confirm(`O processo ${numero} já existe. Deseja vinculá-lo a esta solicitação?`);
+      if (!confirma) {
+        button.disabled = false;
+        button.textContent = 'Cadastrar e vincular';
+        return;
+      }
+    } else {
+      const criado = await supabaseClient.from('processos').insert({
+        numero_processo: numero,
+        cliente_id: f.get('cliente_id') || null,
+        tribunal: String(f.get('tribunal') || '').trim() || null,
+        vara: String(f.get('vara') || '').trim() || null,
+        comarca: String(f.get('comarca') || '').trim() || null,
+        observacoes: String(f.get('observacoes') || '').trim() || null
+      }).select('id, numero_processo').single();
+      if (criado.error) {
+        console.error(criado.error);
+        showToast('Não foi possível cadastrar o processo.');
+        button.disabled = false;
+        button.textContent = 'Cadastrar e vincular';
+        return;
+      }
+      processo = criado.data;
+    }
+
+    const update = await supabaseClient.from('solicitacoes').update({
+      processo_id: processo.id,
+      updated_at: new Date().toISOString()
+    }).eq('id', requestId);
+
+    if (update.error) {
+      console.error(update.error);
+      showToast('O processo foi salvo, mas não foi possível vinculá-lo à solicitação.');
+      button.disabled = false;
+      button.textContent = 'Cadastrar e vincular';
+      return;
+    }
+
+    await supabaseClient.from('historico_solicitacao').insert({
+      solicitacao_id: requestId,
+      usuario_id: currentUser?.id || null,
+      tipo_evento: 'EDICAO',
+      descricao: `Processo ${processo.numero_processo} vinculado à solicitação pelo administrador.`
+    });
+
+    closeModal();
+    await carregarSolicitacoes();
+    showToast('Processo vinculado à solicitação.');
+    openDetail(requestId);
+  });
+}
+
 async function salvarEdicaoCadastro(e, tipo, id, requestId = null) {
   e.preventDefault();
   const f = new FormData(e.target);
@@ -3826,7 +3947,7 @@ function editRequestModal(r) {
                 <label>Processo</label>
                 <div class="select-with-action">
                   <select class="input" name="processo_id"><option value="">Sem processo</option>${processoOptions}</select>
-                  ${r.processoId ? `<button type="button" class="entity-edit-link" data-edit-entity="processo" data-entity-id="${r.processoId}" data-request-id="${r.id}" title="Editar cadastro do processo">✎ Editar cadastro</button>` : ''}
+                  ${r.processoId ? `<button type="button" class="entity-edit-link" data-edit-entity="processo" data-entity-id="${r.processoId}" data-request-id="${r.id}" title="Editar cadastro do processo">✎ Editar cadastro</button>` : `<button type="button" class="entity-edit-link" data-create-process-for-request="${r.id}" title="Cadastrar processo para esta solicitação">＋ Cadastrar processo</button>`}
                 </div>
               </div>
               <div class="field"><label>Área</label><select class="input" name="area_id" id="editArea">${areaOptions}</select></div>
@@ -3867,6 +3988,30 @@ function editRequestModal(r) {
   $('#editRequestModal').addEventListener('click', e => {
     if (e.target.id === 'editRequestModal' || e.target.matches('[data-close]')) closeModal();
   });
+
+  // Os botões de edição de cadastros pertencem ao modal atual.
+  // Registramos os eventos somente na criação deste modal, evitando
+  // qualquer acúmulo de listeners na navegação do sistema.
+  $('#editRequestModal').querySelectorAll('[data-edit-entity]').forEach(button => {
+    button.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      abrirEdicaoCadastro(
+        button.dataset.editEntity,
+        button.dataset.entityId,
+        button.dataset.requestId || null
+      );
+    });
+  });
+
+  $('#editRequestModal').querySelectorAll('[data-create-process-for-request]').forEach(button => {
+    button.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      abrirNovoProcessoParaSolicitacao(button.dataset.createProcessForRequest, r.clienteId || null);
+    });
+  });
+
   $('#editRequestForm').addEventListener('submit', e => updateRequest(e, r));
 }
 
