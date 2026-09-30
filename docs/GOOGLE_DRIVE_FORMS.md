@@ -1,10 +1,10 @@
-# Gestão Computum — Modelo de documentos: Google Forms + vinculação manual
+# Gestão Computum — Documentos: Google Forms + Apps Script + Google Drive
 
 ## Status da decisão
 
-**V9 — Forms + Apps Script + vínculo da pasta no Gestão Computum.**
+**Estado atual — V43.**
 
-A integração direta pela Google Drive API continua fora do escopo. A automação usa o Google Forms e o Google Apps Script, sem Google Cloud/OAuth no frontend. O Gestão Computum usará duas portas de entrada para documentos:
+A integração direta pela Google Drive API continua fora do escopo. O fluxo validado utiliza Google Forms + Google Apps Script + Google Drive privado. A automação usa o Google Forms e o Google Apps Script, sem Google Cloud/OAuth no frontend. O Gestão Computum usará duas portas de entrada para documentos:
 
 1. **Google Forms** — recebimento de arquivos enviados pelo formulário.
 2. **Manual** — registro/vinculação de arquivos ou pastas que já existem no Google Drive.
@@ -46,7 +46,7 @@ O formulário deverá ser configurado para aceitar, conforme a necessidade opera
 - imagens (PNG/JPG/JPEG);
 - outros formatos apenas se forem necessários.
 
-O limite de tamanho e quantidade será definido na criação do formulário.
+No formulário atualmente configurado, os campos incluem código da solicitação, nome do cliente, número do processo, tipo de documento, descrição/observação, arquivos e arquivos adicionais. O limite configurado é de até 10 arquivos em cada campo de upload e até 1 GB por arquivo.
 
 ## Fluxo 2 — Vinculação manual
 
@@ -101,11 +101,7 @@ Como a API automática foi retirada do escopo da V8, não haverá OAuth do Googl
 
 ## Próxima implementação
 
-1. Criar o Google Form oficial do Gestão Computum.
-2. Configurar upload de PDF e imagens.
-3. Definir a planilha de respostas do Forms.
-4. Definir como o código `CJ-AAAA-NNNNN` será informado no formulário.
-5. Implementar no Gestão a abertura do formulário para a solicitação.
-6. Implementar o cadastro manual de pasta/arquivo.
-7. Ajustar a tabela `arquivos` para registrar a origem (`FORM` ou `MANUAL`) e, se necessário, o identificador da resposta do Forms.
-8. Testar o fluxo completo com uma solicitação real de teste.
+1. Melhorar o preenchimento do código da solicitação no Forms, se for necessário automatizar o pré-preenchimento.
+2. Integrar a lista de documentos do Gestão diretamente aos registros de `arquivos`.
+3. Permitir o cadastro manual de arquivos individuais além do vínculo de pasta.
+4. Avaliar automações adicionais sem expor credenciais ou tokens no frontend.

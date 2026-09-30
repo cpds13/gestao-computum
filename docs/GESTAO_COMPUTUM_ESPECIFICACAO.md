@@ -1,5 +1,28 @@
 # Gestão Computum — Especificação Completa do Projeto
 
+## Estado funcional em 29/09/2026 — V44
+
+A especificação abaixo permanece como documento de referência do projeto. As seguintes partes já estão implementadas e validadas no frontend/Supabase:
+
+- autenticação e perfis;
+- solicitações e cadastros relacionados;
+- calculistas e vínculo com usuários;
+- Minha produção;
+- revisão e devolução;
+- entrega `ENVIADO → AGUARDANDO_PAGAMENTO`;
+- encerramento financeiro;
+- múltiplos recebimentos e pagamentos parciais;
+- Tipo de Serviço dinâmico por Área;
+- `Outro` com detalhamento de até 100 caracteres;
+- tipos Tributário `Rest. acima TETO` e `Recomposição IR`;
+- Google Forms + Apps Script para organização dos documentos;
+- vínculo da pasta privada do Google Drive;
+- pasta `05 - Financeiro`;
+- histórico operacional.
+
+Partes descritas neste documento como futuras permanecem como requisitos/propostas e não devem ser interpretadas como funcionalidades já disponíveis.
+
+
 ## 1. Visão geral
 
 O **Gestão Computum** será um sistema web para controle operacional de solicitações de cálculos judiciais feitas por advogados.
@@ -1930,3 +1953,11 @@ O recebimento de documentos será dividido em duas modalidades:
 Ambas alimentam a mesma área de documentos da solicitação e devem permanecer associadas ao código `CJ-AAAA-NNNNN`.
 
 O detalhamento operacional está em `docs/GOOGLE_DRIVE_FORMS.md`.
+
+
+### V44 — ajustes funcionais
+
+- Ampliação dos Tipos de Serviço de Servidor Público e Saúde, preservando os tipos existentes.
+- `Outro` continua sendo opção especial com detalhamento de até 100 caracteres.
+- Código das solicitações pode ser copiado diretamente pelas tabelas.
+- Financeiro separado em `Contas a receber` e `Histórico financeiro` para solicitações concluídas.

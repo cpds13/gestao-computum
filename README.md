@@ -2,9 +2,13 @@
 
 Sistema web de gestão operacional de solicitações de cálculos judiciais.
 
-O Gestão Computum **não é um motor de cálculo**. Ele controla a operação da demanda: entrada, advogado, cliente, processo, serviço, calculista, prazo, documentos, andamento, financeiro, retrabalho e histórico.
+O Gestão Computum **não é um motor de cálculo**. Ele controla a operação da demanda: entrada, advogado, cliente, processo, área, tipo de serviço, calculista, prazo, documentos, produção, revisão, entrega, financeiro, retrabalho e histórico.
 
-## Arquitetura atual
+## Estado atual — V44
+
+A V44 consolida as funcionalidades validadas até 29/09/2026 e inclui a ampliação dos Tipos de Serviço, cópia rápida do código e histórico financeiro de solicitações concluídas.
+
+### Arquitetura
 
 - **Frontend:** HTML, CSS e JavaScript estáticos
 - **Hospedagem:** GitHub Pages
@@ -13,241 +17,227 @@ O Gestão Computum **não é um motor de cálculo**. Ele controla a operação d
 - **Banco/Auth:** Supabase
 - **Banco:** PostgreSQL
 - **Autenticação:** Supabase Auth
-- **Documentos:** Google Drive privado — integração ainda pendente
-- **Sistemas especializados:** links configuráveis para aplicações Computum independentes
+- **Documentos:** Google Forms + Google Apps Script + Google Drive privado
+- **Sistemas especializados:** aplicações independentes acessadas por vínculo/URL
 
-## Estado da V6 — baseline funcional
+### Perfis
 
-A V6 consolida o que foi implementado e testado até 27/09/2026.
+- **Administrador:** controla o ciclo administrativo, revisão, entrega, financeiro e configurações.
+- **Calculista:** trabalha nas solicitações atribuídas em **Minha produção**.
+- **Administrador + Calculista:** um mesmo usuário pode exercer as duas funções.
 
-### Autenticação
+O vínculo entre conta de acesso e cadastro de calculista é mantido por `public.calculistas.usuario_id`.
 
-- Login por Supabase Auth.
-- Perfil administrativo carregado de `public.usuarios`.
-- Usuário administrativo atual: `gestao@computum.com.br`.
-- O registro em `public.usuarios` utiliza o mesmo UUID do usuário em `auth.users`.
-- A senha permanece exclusivamente no Supabase Auth; não existe senha no frontend.
+## Fluxo operacional validado
 
-### Banco e segurança
+```text
+NOVO
+  ↓
+ANÁLISE / conferência
+  ↓
+AGUARDANDO DOCUMENTOS (quando necessário)
+  ↓
+EM CÁLCULO
+  ↓
+EM REVISÃO
+  ├── Devolver para cálculo → EM CÁLCULO
+  └── Aprovar
+          ↓
+       ENVIADO
+          ↓
+Registrar entrega
+          ↓
+AGUARDANDO PAGAMENTO
+          ↓
+Recebimentos parciais ou total
+          ↓
+CONCLUÍDO
+```
 
-O banco utiliza PostgreSQL/Supabase com RLS habilitado nas tabelas operacionais.
+O calculista não encerra financeiramente a solicitação. O `CONCLUÍDO` é alcançado pelo fluxo financeiro administrativo.
 
-O acesso da aplicação ocorre como usuário autenticado (`authenticated`).
+## Funcionalidades validadas
 
 ### Solicitações
 
-A criação de uma solicitação já é persistida no Supabase.
+- criação e edição;
+- advogado, cliente e processo;
+- área e tipo de serviço;
+- atribuição de calculista;
+- prazo e prioridade;
+- valor cobrado;
+- histórico;
+- exclusão administrativa com registros relacionados conforme as regras do banco.
 
-O fluxo atual:
+### Tipo de Serviço
+
+O tipo é carregado dinamicamente do Supabase de acordo com a Área.
+
+Para `Outro`:
+
+- aparece o campo de especificação;
+- limite de 100 caracteres;
+- valor armazenado em `solicitacoes.tipo_servico_outro`;
+- a exibição utiliza `Outro — [especificação]`.
+
+Na área **Tributário**, estão cadastrados:
+
+- `Atualização`
+- `Cálculo tributário`
+- `Rest. acima TETO`
+- `Recomposição IR`
+
+Os cadastros existentes de áreas e tipos são preservados.
+
+### Produção e revisão
+
+- painel **Minha produção**;
+- solicitações atribuídas ao calculista;
+- `NOVO → EM CÁLCULO → EM REVISÃO`;
+- devolução pelo revisor com justificativa;
+- aprovação pelo administrador;
+- administrador que também é calculista pode atuar nas duas funções.
+
+### Entrega e financeiro
+
+Após a aprovação, a solicitação pode passar de `ENVIADO` para `AGUARDANDO_PAGAMENTO`.
+
+O financeiro suporta:
+
+- valor do serviço;
+- múltiplos recebimentos;
+- recebimentos parciais;
+- saldo pendente;
+- conta de recebimento;
+- forma de pagamento;
+- recibo;
+- link do recibo no Drive;
+- conclusão somente quando o saldo chega a zero.
+
+Exemplo:
 
 ```text
-Formulário
-   ↓
-Localiza/cria advogado
-   ↓
-Localiza/cria cliente
-   ↓
-Localiza/cria processo (quando informado)
-   ↓
-Localiza área
-   ↓
-Localiza/cria tipo de serviço
-   ↓
-Localiza calculista
-   ↓
-Gera código CJ-AAAA-NNNNN
-   ↓
-Insere em public.solicitacoes
-   ↓
-Registra evento em public.historico_solicitacao
-   ↓
-Recarrega dados do Supabase
+Valor:       R$ 5.000,00
+1º pagamento R$ 3.000,00
+2º pagamento R$ 1.000,00
+Saldo:       R$ 1.000,00
+             ↓
+3º pagamento R$ 1.000,00
+             ↓
+Saldo:       R$ 0,00
+             ↓
+CONCLUÍDO
 ```
 
-### Código das solicitações
+### Retrabalhos
 
-O padrão adotado é:
+O Dashboard consulta a tabela `public.retrabalhos` para apresentar a quantidade real de retrabalhos. O número não é mais fixo no frontend.
 
-```text
-CJ-2026-00001
-CJ-2026-00002
-CJ-2026-00003
-...
-```
+### Documentos
 
-### Calculistas
+O fluxo atualmente utilizado é:
 
-Calculistas são pessoas que executam os cálculos, mas **não são usuários de login do sistema**.
+1. **Google Forms** para recebimento;
+2. **Google Apps Script** para organização;
+3. **Google Drive privado** como armazenamento;
+4. **Gestão Computum** para vincular e abrir a pasta da solicitação.
 
-Eles ficam na tabela `public.calculistas`.
-
-Cadastro atual:
-
-- Patrick
-- Ana Clara
-- Ericka
-
-O campo de calculista do formulário é carregado do Supabase e grava `solicitacoes.calculista_id` apontando para `public.calculistas`.
-
-### Testes realizados
-
-Foram realizados testes reais contra o Supabase:
-
-- Login administrativo: **OK**
-- Carregamento do perfil administrativo: **OK após criação do registro em `public.usuarios`**
-- Criação de solicitação: **OK**
-- Geração de código: **OK**
-- Criação rápida de advogado: **OK**
-- Criação rápida de cliente: **OK**
-- Criação de processo: suportada pelo fluxo
-- Registro de histórico: implementado
-- Cadastro de calculistas: **OK**
-- Vinculação de Patrick à solicitação: **OK**
-
-Solicitações de teste existentes no banco no momento da V6:
-
-- `CJ-2026-00001` — criada antes da tabela própria de calculistas; aparece sem calculista atribuído.
-- `CJ-2026-00002` — criada com **Patrick** atribuído corretamente.
-
-Esses registros são dados de teste e poderão ser removidos posteriormente.
-
-## Estrutura principal do banco
-
-- `usuarios`
-- `advogados`
-- `clientes`
-- `processos`
-- `areas_servico`
-- `tipos_servico`
-- `sistemas_especializados`
-- `calculistas`
-- `solicitacoes`
-- `pastas_drive`
-- `arquivos`
-- `retrabalhos`
-- `pagamentos`
-- `historico_solicitacao`
-
-## Google Drive — próxima etapa
-
-A integração com Google Drive ainda **não está implementada**.
-
-A arquitetura prevista é:
+Estrutura:
 
 ```text
 Computum
 └── Gestão
-    └── CJ-2026-00001
+    └── CJ-2026-xxxxx
         ├── 01 - Documentos recebidos
         ├── 02 - Cálculos
         ├── 03 - Parecer
-        └── 04 - Retrabalho
+        ├── 04 - Retrabalho
+        └── 05 - Financeiro
 ```
 
-O banco deverá armazenar referências às pastas e arquivos, enquanto os documentos permanecerão no Drive privado.
+O `05 - Financeiro` é utilizado para documentos de recibo e outros documentos financeiros.
 
-A autenticação do Google deverá ser implementada sem colocar credenciais privadas ou segredos no frontend.
+Não há dependência de Google Cloud ou cartão para o fluxo Forms + Apps Script adotado.
+
+## Banco e migrations
+
+Migrations incluídas no projeto:
+
+- `001_initial_schema.sql` — estrutura inicial;
+- `002_calculistas.sql` — cadastro operacional de calculistas;
+- `003_documentos_forms_manual.sql` — origem dos documentos e vínculo com Forms;
+- `004_calculistas_usuarios.sql` — vínculo calculista/usuário;
+- `005_encerramento_financeiro.sql` — dados de recebimento e recibo;
+- `006_tipo_servico_detalhamento.sql` — `tipo_servico_outro` e tipos Tributário.
+
+As migrations devem ser executadas conforme o estado atual do projeto Supabase, evitando reaplicar alterações já executadas sem necessidade.
 
 ## Sistemas especializados
-
-O Gestão permanece separado dos sistemas especializados, como:
 
 - `abono.computum.com.br`
 - `diferencas.computum.com.br`
 - `saude.computum.com.br`
 
-A integração inicial será por vínculo/URL. Integrações automáticas poderão ser desenvolvidas posteriormente.
+O Gestão permanece separado desses sistemas. A integração inicial é por vínculo/URL.
 
-## Próximas versões planejadas
+## Documentação
 
-### V7 — Google Drive
+- `docs/MANUAL_DO_SISTEMA.md` — manual operacional oficial;
+- `docs/GESTAO_COMPUTUM_ESPECIFICACAO.md` — especificação funcional;
+- `docs/GOOGLE_DRIVE_FORMS.md` — fluxo de documentos por Forms/Apps Script/Drive.
 
-- autenticação Google;
-- criação de pasta da solicitação;
-- subpastas padronizadas;
-- upload do documento inicial;
-- registro em `arquivos`;
-- registro em `pastas_drive`;
-- abertura da pasta pelo detalhe da solicitação.
-
-### V8 — Painel completo da solicitação
-
-- documentos;
-- andamento;
-- histórico;
-- dados financeiros;
-- ações da demanda;
-- links para sistemas especializados.
-
-### V9 — Workflow
-
-- alteração de status;
-- atribuição/reatribuição de calculista;
-- revisão;
-- prazos;
-- histórico automático das alterações.
-
-### V10 — Financeiro
-
-- pagamentos parciais;
-- saldo;
-- forma de pagamento;
-- comprovantes;
-- situação financeira.
-
-### V11 — Retrabalho e impugnação
-
-- abertura de retrabalho;
-- motivo;
-- responsável;
-- prazo;
-- cobrança;
-- histórico.
-
-### V12 — Relatórios
-
-- produção;
-- prazos;
-- produtividade;
-- origem;
-- faturamento;
-- recebimentos;
-- retrabalhos.
+A documentação deve ser atualizada sempre que uma etapa funcional for validada.
 
 ## Segurança
 
 Nunca colocar no frontend:
 
 - `service_role` key;
-- senha de usuário;
+- senhas;
 - client secret do Google;
 - tokens privados;
-- qualquer segredo de backend.
+- outros segredos de backend.
 
-A chave pública do Supabase pode ser utilizada no navegador, desde que o banco esteja protegido por RLS e as políticas sejam configuradas adequadamente.
+O Google Drive deve permanecer privado/restrito.
 
-## V8 — documentos: Google Forms + manual
+## Histórico de versões
 
-A V8 define o modelo de documentos sem integração automática com a Google Drive API.
+### V44
+- Ampliação dos Tipos de Serviço de Servidor Público e Saúde.
+- `Outro` continua com detalhamento de até 100 caracteres.
+- Cópia rápida do código das solicitações pelo ícone `⧉`.
+- Histórico financeiro separado de Contas a receber.
 
-- **Google Forms:** canal de recebimento de PDFs e imagens.
-- **Manual:** vinculação de arquivos/pastas já existentes no Drive.
-- **Supabase:** registra referências, categoria, origem e histórico.
-- **Google Drive:** continua sendo o armazenamento privado dos documentos.
+### V42
+- correção do fluxo de **Tipo de Serviço**;
+- `Outro` exibido por último;
+- abertura do campo de especificação com limite de 100 caracteres;
+- preservação dos tipos cadastrados no Supabase;
+- conclusão financeira com múltiplos recebimentos validada.
 
-Detalhamento: `docs/GOOGLE_DRIVE_FORMS.md`.
+### V39
+- correção da relação Área → Tipo de Serviço.
 
-A migration `003_documentos_forms_manual.sql` documenta a alteração prevista no banco, mas **não deve ser executada ainda**; os campos finais serão validados após a criação do formulário.
+### V38
+- recebimentos parciais e múltiplos pagamentos.
 
+### V37
+- `ENVIADO → AGUARDANDO_PAGAMENTO`.
 
-## V9 — Google Forms + Apps Script
+### V36
+- Tipo de Serviço dinâmico;
+- `tipo_servico_outro`;
+- tipos Tributário adicionais.
 
-O recebimento de documentos utiliza o Google Forms e um Apps Script vinculado à planilha de respostas. Os arquivos são organizados automaticamente em `Computum/Gestão/CJ-2026-xxxxx/01 - Documentos recebidos`, com subpastas padrão para Cálculos, Parecer e Retrabalho. O frontend possui ação para abrir o Forms e vincular a pasta privada do Drive à solicitação. Não há dependência de Google Cloud ou cartão.
+### V29
+- encerramento financeiro e dados de recibo.
 
+### V24
+- fluxo administrativo de revisão e devolução.
 
-## V12 — correção de navegação
-Corrigido acúmulo de listeners na navegação lateral, que podia causar múltiplas renderizações ao clicar entre áreas e deixar a interface lenta ou travada após várias navegações.
+### V23
+- administrador também pode atuar como calculista.
 
+### V22
+- manual interno e Minha produção.
 
-## V18
-Correções na edição de cadastros relacionados e possibilidade de cadastrar/vincular processo diretamente pela edição da solicitação.

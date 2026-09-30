@@ -1,4 +1,5 @@
-/* Gestão Computum — primeira versão de frontend.
+/* Gestão Computum — V39 — recebimentos parciais e múltiplos recebimentos.
+   primeira versão de frontend.
    O armazenamento local abaixo é apenas modo protótipo.
    Em produção, substituir a camada store por Supabase e o upload por Google Drive.
 */
@@ -7,6 +8,7 @@ const CONFIG = {
   supabaseUrl: '',
   supabaseAnonKey: '',
   googleDriveFolderId: '',
+  googleDriveGestaoUrl: 'https://drive.google.com/drive/folders/1XgQwf79r9D7-6xwvqs_0RaKrmJGYzUh-?usp=drive_link',
   googleFormUrl: 'https://docs.google.com/forms/d/e/1FAIpQLSes_cqGBuoBI8rjiW2q5kkC0M9hrs5rrqpPijeEHQHmZ8dTXA/viewform?usp=pp_url',
   productionReady: false
 };
@@ -60,20 +62,93 @@ async function carregarSessao() {
   return true;
 }
 
-function isCalculista() {
-  return currentProfile?.perfil === 'calculista';
-}
-
 function isAdministrador() {
   return currentProfile?.perfil === 'administrador';
 }
 
-function minhasSolicitacoes() {
-  if (!isCalculista()) return [];
+function normalizarChaveStatus(status) {
+  return String(status || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, '_');
+}
+
+function estaEmRevisao(status) {
+  return normalizarChaveStatus(status) === 'EM_REVISAO';
+}
+
+function calculistaAtual() {
   const nome = (currentProfile?.nome || '').trim().toLowerCase();
-  return db.requests.filter(r =>
-    (r.calculista || '').trim().toLowerCase() === nome
-  );
+  if (!currentUser?.id && !nome) return null;
+
+  return db.calculistas.find(item =>
+    item.ativo !== false && (
+      (item.usuario_id && item.usuario_id === currentUser?.id) ||
+      (!item.usuario_id && (item.nome || '').trim().toLowerCase() === nome)
+    )
+  ) || null;
+}
+
+// Um usuário pode exercer mais de uma função. Nesta etapa, o vínculo com
+// o cadastro de calculista é a segunda função; assim, um administrador
+// também pode produzir cálculos sem precisar de uma segunda conta.
+function isCalculista() {
+  return currentProfile?.perfil === 'calculista' || !!calculistaAtual();
+}
+
+function funcoesUsuario() {
+  const funcoes = [];
+  if (isAdministrador()) funcoes.push('Administrador');
+  if (isCalculista()) funcoes.push('Calculista');
+  return funcoes;
+}
+
+function minhasSolicitacoes() {
+  const calculista = calculistaAtual();
+  if (!calculista) return [];
+  return db.requests.filter(r => r.calculistaId === calculista.id);
+}
+
+function ultimaDevolucaoRevisao(r) {
+  const eventos = Array.isArray(r?.historico) ? r.historico : [];
+  return eventos
+    .slice()
+    .reverse()
+    .find(e => {
+      const tipo = normalizarChaveStatus(e?.tipo || e?.tipo_evento || '');
+      const descricao = String(e?.[1] || e?.descricao || '').toLowerCase();
+      return (
+        tipo === 'REVISAO' &&
+        (descricao.includes('devolveu o cálculo') || descricao.includes('devolveu o calculo')) &&
+        descricao.includes('motivo:')
+      ) || (
+        descricao.includes('devolveu o cálculo') || descricao.includes('devolveu o calculo')
+      );
+    }) || null;
+}
+
+function motivoUltimaDevolucao(r) {
+  const evento = ultimaDevolucaoRevisao(r);
+  if (!evento) return '';
+  const descricao = String(evento?.[1] || evento?.descricao || '');
+  const marcador = descricao.match(/motivo:\s*([\s\S]*)$/i);
+  return marcador ? marcador[1].trim() : '';
+}
+
+function devolucaoPendenteParaCalculista(r) {
+  return !!(r && r.status === 'EM_CÁLCULO' && motivoUltimaDevolucao(r));
+}
+
+function statusLabelCalculista(r) {
+  if (devolucaoPendenteParaCalculista(r)) return 'Devolvido';
+  return statusLabel[r.status] || r.status;
+}
+
+function statusClassCalculista(r) {
+  if (devolucaoPendenteParaCalculista(r)) return 'devolvido';
+  return statusClass(r.status);
 }
 
 function atualizarUsuarioInterface() {
@@ -102,14 +177,36 @@ function atualizarUsuarioInterface() {
   if (topbarName) topbarName.textContent = nome;
   if (topbarAvatar) topbarAvatar.textContent = inicial;
 
-  if (currentProfile.perfil === 'calculista') {
-    document.querySelectorAll('.nav-item[data-view]').forEach(button => {
-      button.style.display = button.dataset.view === 'dashboard' ? '' : 'none';
-    });
-    const dashboardButton = document.querySelector('.nav-item[data-view="dashboard"]');
-    if (dashboardButton) dashboardButton.innerHTML = '<span>∑</span> Minha produção';
+  const funcoes = funcoesUsuario();
+  if (sidebarProfile) sidebarProfile.textContent = funcoes.join(' · ') || perfil;
+
+  const calc = isCalculista();
+  const admin = isAdministrador();
+
+  const driveGestaoButton = document.getElementById('driveGestaoButton');
+  if (driveGestaoButton) {
+    driveGestaoButton.style.display = admin ? '' : 'none';
   }
+
+  document.querySelectorAll('.nav-item[data-view]').forEach(button => {
+    const view = button.dataset.view;
+    let visible = true;
+
+    if (!admin && calc) {
+      visible = ['producao', 'manual'].includes(view);
+    } else if (admin && calc) {
+      visible = true;
+    }
+
+    button.style.display = visible ? '' : 'none';
+  });
+
+  const dashboardButton = document.querySelector('.nav-item[data-view="dashboard"]');
+  const productionButton = document.querySelector('.nav-item[data-view="producao"]');
+  if (dashboardButton) dashboardButton.innerHTML = '<span>⌂</span> Dashboard';
+  if (productionButton) productionButton.innerHTML = '<span>∑</span> Minha produção';
 }
+
 
 function mostrarLogin(mensagem = '') {
   const appShell = document.getElementById('appShell');
@@ -216,11 +313,13 @@ function mostrarLogin(mensagem = '') {
 const db = {
   requests: [],
   calculistas: [],
+  usuarios: [],
   advogados: [],
   clientes: [],
   processos: [],
   areas: [],
   tipos: [],
+  retrabalhosCount: 0,
   save() {
     // A persistência no Supabase será feita pelas operações CRUD.
     // Nesta etapa, a leitura já vem do banco.
@@ -228,6 +327,7 @@ const db = {
 };
 
 function normalizarStatus(status) {
+  const chave = normalizarChaveStatus(status);
   const mapa = {
     NOVO: 'NOVO',
     ANALISE: 'ANALISE',
@@ -243,7 +343,7 @@ function normalizarStatus(status) {
     CANCELADO: 'CANCELADO'
   };
 
-  return mapa[status] || status || 'NOVO';
+  return mapa[chave] || status || 'NOVO';
 }
 
 function normalizarPrioridade(prioridade) {
@@ -269,7 +369,8 @@ async function carregarSolicitacoes() {
       usuariosResult,
       sistemasResult,
       pagamentosResult,
-      historicoResult
+      historicoResult,
+      retrabalhosResult
     ] = await Promise.all([
       supabaseClient
         .from('solicitacoes')
@@ -281,6 +382,7 @@ async function carregarSolicitacoes() {
           processo_id,
           area_id,
           tipo_servico_id,
+          tipo_servico_outro,
           descricao,
           prazo,
           status,
@@ -342,12 +444,16 @@ async function carregarSolicitacoes() {
 
       supabaseClient
         .from('pagamentos')
-        .select('id, solicitacao_id, valor, data_pagamento, forma_pagamento, observacao'),
+        .select('id, solicitacao_id, valor, data_pagamento, forma_pagamento, observacao, conta_recebimento, recibo_emitido, recibo_numero, recibo_data, recibo_observacoes, recibo_drive_url, created_at'),
 
       supabaseClient
         .from('historico_solicitacao')
         .select('id, solicitacao_id, usuario_id, tipo_evento, descricao, data_hora')
-        .order('data_hora', { ascending: true })
+        .order('data_hora', { ascending: true }),
+
+      supabaseClient
+        .from('retrabalhos')
+        .select('id')
     ]);
 
     const resultados = [
@@ -361,7 +467,8 @@ async function carregarSolicitacoes() {
       usuariosResult,
       sistemasResult,
       pagamentosResult,
-      historicoResult
+      historicoResult,
+      retrabalhosResult
     ];
 
     const erro = resultados.find(resultado => resultado.error);
@@ -390,7 +497,18 @@ async function carregarSolicitacoes() {
     const calculistas = calculistasResult.data || [];
     const usuarios = usuariosResult.data || [];
 
-    db.calculistas = calculistas;
+    let calculistasComVinculo = calculistas;
+    const linksResult = await supabaseClient
+      .from('calculistas')
+      .select('id, usuario_id');
+
+    if (!linksResult.error) {
+      const links = new Map((linksResult.data || []).map(item => [item.id, item.usuario_id]));
+      calculistasComVinculo = calculistas.map(item => ({ ...item, usuario_id: links.get(item.id) || null }));
+    }
+
+    db.calculistas = calculistasComVinculo;
+    db.usuarios = usuarios;
     db.advogados = advogados;
     db.clientes = clientes;
     db.processos = processos;
@@ -400,6 +518,9 @@ async function carregarSolicitacoes() {
     const sistemas = sistemasResult.data || [];
     const pagamentos = pagamentosResult.data || [];
     const historico = historicoResult.data || [];
+    const retrabalhos = retrabalhosResult.data || [];
+
+    db.retrabalhosCount = retrabalhos.length;
 
     const advogadoMap = new Map(
       advogados.map(item => [item.id, item])
@@ -430,6 +551,7 @@ async function carregarSolicitacoes() {
     );
 
     const pagamentosPorSolicitacao = new Map();
+    const pagamentosDetalhesPorSolicitacao = new Map();
 
     pagamentos.forEach(pagamento => {
       const atual =
@@ -439,6 +561,9 @@ async function carregarSolicitacoes() {
         pagamento.solicitacao_id,
         atual + Number(pagamento.valor || 0)
       );
+      const detalhes = pagamentosDetalhesPorSolicitacao.get(pagamento.solicitacao_id) || [];
+      detalhes.push(pagamento);
+      pagamentosDetalhesPorSolicitacao.set(pagamento.solicitacao_id, detalhes);
     });
 
     const historicoPorSolicitacao = new Map();
@@ -467,6 +592,12 @@ async function carregarSolicitacoes() {
       const processo = processoMap.get(solicitacao.processo_id);
       const area = areaMap.get(solicitacao.area_id);
       const tipo = tipoMap.get(solicitacao.tipo_servico_id);
+      const tipoServicoNome = tipo?.nome || 'Não informado';
+      const tipoServicoOutro = String(solicitacao.tipo_servico_outro || '').trim();
+      const tipoServicoExibicao =
+        tipoServicoNome === 'Outro' && tipoServicoOutro
+          ? `Outro — ${tipoServicoOutro}`
+          : tipoServicoNome;
 
       const calculista =
         db.calculistas.find(
@@ -489,7 +620,9 @@ async function carregarSolicitacoes() {
         cliente: cliente?.nome || 'Não informado',
         processo: processo?.numero_processo || 'Não informado',
         area: area?.nome || 'Não informado',
-        tipo: tipo?.nome || 'Não informado',
+        tipo: tipoServicoExibicao,
+        tipoServicoNome,
+        tipoServicoOutro,
         tipoEntrega: solicitacao.tipo_entrega || 'calculo',
         status: normalizarStatus(solicitacao.status),
         prioridade: normalizarPrioridade(solicitacao.prioridade),
@@ -506,6 +639,16 @@ async function carregarSolicitacoes() {
         recebido: Number(
           pagamentosPorSolicitacao.get(solicitacao.id) || 0
         ),
+
+        pagamentos: (pagamentosDetalhesPorSolicitacao.get(solicitacao.id) || [])
+          .slice()
+          .sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || ''))),
+
+        ultimoPagamento: (() => {
+          const lista = (pagamentosDetalhesPorSolicitacao.get(solicitacao.id) || []).slice();
+          lista.sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+          return lista.at(-1) || null;
+        })(),
 
         origem: solicitacao.origem || advogado?.origem || '',
         sistema: sistema?.nome || '',
@@ -552,7 +695,9 @@ const state = {
   query: '',
   status: '',
   area: '',
-  selected: null
+  selected: null,
+  manualTab: 'visao',
+  manualQuery: ''
 };
 
 const $ = (s, root = document) => root.querySelector(s);
@@ -596,19 +741,24 @@ const statusLabel = {
   CONCLUÍDO: 'Concluído',
   IMPUGNADO: 'Impugnado',
   PAUSADO: 'Pausado',
-  CANCELADO: 'Cancelado'
+  CANCELADO: 'Cancelado',
+  RETRABALHO: 'Retrabalho'
 };
 
 const statusClass = s =>
   ({
     NOVO: 'novo',
+    ANALISE: 'analise',
+    AGUARDANDO_DOCUMENTOS: 'aguardando',
     EM_CÁLCULO: 'calculo',
     EM_REVISÃO: 'revisao',
     ENVIADO: 'enviado',
+    AGUARDANDO_PAGAMENTO: 'pagamento',
     CONCLUÍDO: 'concluido',
-    AGUARDANDO_DOCUMENTOS: 'aguardando',
-    AGUARDANDO_PAGAMENTO: 'aguardando',
-    IMPUGNADO: 'atrasado'
+    IMPUGNADO: 'impugnado',
+    RETRABALHO: 'retrabalho',
+    PAUSADO: 'pausado',
+    CANCELADO: 'cancelado'
   }[s] || 'novo');
 
 function showToast(msg) {
@@ -637,6 +787,22 @@ function extrairGoogleDriveFolderId(url) {
   }
 
   return '';
+}
+
+function abrirPastaGestao() {
+  if (!isAdministrador()) {
+    showToast('Acesso restrito ao administrador.');
+    return;
+  }
+
+  const url = CONFIG.googleDriveGestaoUrl;
+
+  if (!url) {
+    showToast('A pasta de Gestão ainda não foi configurada.');
+    return;
+  }
+
+  window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 function abrirFormularioForms(r) {
@@ -694,7 +860,7 @@ function abrirVincularPastaModal(r) {
   `;
 
   $('#driveLinkModal').addEventListener('click', e => {
-    if (e.target.id === 'driveLinkModal' || e.target.matches('[data-close]')) {
+    if (e.target.matches('[data-close]')) {
       closeModal();
     }
   });
@@ -747,8 +913,8 @@ let queryRenderTimer = null;
 function nav(view) {
   if (!view || !views[view]) view = 'dashboard';
 
-  if (isCalculista() && view !== 'dashboard') {
-    view = 'dashboard';
+  if (isCalculista() && !isAdministrador() && !['producao', 'manual'].includes(view)) {
+    view = 'producao';
   }
 
   if (state.view === view && !renderEmAndamento) {
@@ -784,12 +950,13 @@ function render() {
   renderEmAndamento = true;
 
   try {
-    if (isCalculista() && state.view !== 'dashboard') {
-      state.view = 'dashboard';
+    if (isCalculista() && !isAdministrador() && !['producao', 'manual'].includes(state.view)) {
+      state.view = 'producao';
     }
 
     const titles = {
       dashboard: 'Dashboard',
+      producao: 'Minha produção',
       solicitacoes: 'Solicitações',
       advogados: 'Advogados',
       clientes: 'Clientes',
@@ -797,7 +964,8 @@ function render() {
       calculistas: 'Calculistas',
       financeiro: 'Financeiro',
       relatorios: 'Relatórios',
-      configuracoes: 'Configurações'
+      configuracoes: 'Configurações',
+      manual: 'Manual'
     };
 
     const content = $('#content');
@@ -828,6 +996,7 @@ function tutorialIcon(name) {
     calculistas: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><rect x="7" y="6" width="10" height="3" rx="1"/><path d="M8 13h2M14 13h2M8 17h2M14 17h2"/></svg>',
     financeiro: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M14.8 8.7c-.7-.7-1.7-1.1-2.9-1.1-1.8 0-3 .8-3 2 0 3.1 6 1.4 6 4.5 0 1.2-1.2 2.1-3.1 2.1-1.3 0-2.4-.4-3.2-1.2M12 6v12"/></svg>',
     relatorios: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V9M12 19V5M19 19v-7"/><path d="M3 19h18"/></svg>',
+    manual: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H20v18H7.5A2.5 2.5 0 0 0 5 22V4.5Z"/><path d="M5 4.5V20M9 7h7M9 11h7M9 15h5"/></svg>',
     configuracoes: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/><path d="m19 13.5 1.2 1-.9 1.6-1.5-.5a7.8 7.8 0 0 1-1.4 1.4l.5 1.5-1.6.9-1-1.2a7.5 7.5 0 0 1-1.9.3l-.5 1.5h-1.8l-.5-1.5a7.5 7.5 0 0 1-1.9-.3l-1 1.2-1.6-.9.5-1.5a7.8 7.8 0 0 1-1.4-1.4l-1.5.5-.9-1.6 1.2-1a7.5 7.5 0 0 1-.2-1.5c0-.5.1-1 .2-1.5l-1.2-1 .9-1.6 1.5.5A7.8 7.8 0 0 1 7.2 7l-.5-1.5 1.6-.9 1 1.2a7.5 7.5 0 0 1 1.9-.3l.5-1.5h1.8l.5 1.5a7.5 7.5 0 0 1 1.9.3l1-1.2 1.6.9-.5 1.5a7.8 7.8 0 0 1 1.4 1.4l1.5-.5.9 1.6-1.2 1c.1.5.2 1 .2 1.5s-.1 1-.2 1.5Z"/></svg>'
   };
   return icons[name] || icons.dashboard;
@@ -835,7 +1004,7 @@ function tutorialIcon(name) {
 
 function tutorialForView(view) {
   const data = {
-    dashboard: { title: 'Visão geral', steps: ['Acompanhe o volume de solicitações e os valores em aberto.', 'Use os atalhos para acessar rapidamente as demandas que precisam de atenção.', 'Abra uma solicitação para consultar documentos, responsáveis, prazo e histórico.'] },
+    dashboard: { title: 'Visão geral', steps: ['Acompanhe o volume de solicitações, os valores a receber e os valores já recebidos.', 'Identifique rapidamente as demandas que precisam de atenção, como prazos e pagamentos pendentes.', 'Abra uma solicitação para consultar documentos, responsáveis, prazo, valores e histórico.'] },
     solicitacoes: { title: 'Como funciona Solicitações', steps: ['Cadastre a demanda com advogado, cliente, processo, serviço e prazo.', 'Atribua o calculista e acompanhe o status da produção.', 'Use os detalhes para enviar documentos pelo Forms e acessar a pasta no Drive.'] },
     advogados: { title: 'Como funciona Advogados', steps: ['Cadastre quem solicita os cálculos.', 'Mantenha os dados de contato organizados para reutilização nas solicitações.', 'Acesse as solicitações relacionadas a cada advogado.'] },
     clientes: { title: 'Como funciona Clientes', steps: ['Cadastre os clientes atendidos pelo escritório.', 'Centralize os dados básicos para evitar novos cadastros repetidos.', 'Use o cadastro como referência ao criar solicitações e processos.'] },
@@ -843,22 +1012,37 @@ function tutorialForView(view) {
     calculistas: { title: 'Como funciona Calculistas', steps: ['Cadastre os profissionais que executam os cálculos.', 'Mantenha os calculistas ativos disponíveis para atribuição.', 'A distribuição das solicitações determina o que aparece no painel de produção de cada calculista.'] },
     financeiro: { title: 'Como funciona Financeiro', steps: ['Acompanhe valores cobrados e recebidos.', 'Registre pagamentos vinculados às solicitações.', 'Use essas informações para acompanhar saldos pendentes.'] },
     relatorios: { title: 'Como funciona Relatórios', steps: ['Consulte os dados consolidados da operação.', 'Use os relatórios para acompanhar volume, prazos e situação das demandas.', 'Os relatórios servem como apoio à gestão e não alteram os registros.'] },
-    configuracoes: { title: 'Como funciona Configurações', steps: ['Consulte as configurações gerais do sistema.', 'Mantenha os parâmetros e integrações organizados.', 'Alterações sensíveis devem ser feitas somente por usuários autorizados.'] }
+    configuracoes: { title: 'Como funciona Configurações', steps: ['Consulte as configurações gerais do sistema.', 'Mantenha os parâmetros e integrações organizados.', 'Alterações sensíveis devem ser feitas somente por usuários autorizados.'] },
+    producao: { title: 'Como funciona Minha produção', steps: ['Veja somente as solicitações atribuídas ao seu cadastro de calculista.', 'Abra uma demanda para consultar documentos, orientações, prazo e sistema especializado.', 'Inicie o cálculo e, quando terminar a produção técnica, envie para revisão. A entrega e o pagamento são etapas administrativas.'] },
+    manual: { title: 'Manual do sistema', steps: ['Consulte as orientações completas para a operação do Gestão Computum.', 'Use o manual correspondente ao seu perfil para entender responsabilidades, status e fluxos.', 'A documentação acompanha a evolução do sistema e deve ser consultada quando uma nova etapa for implantada.'] }
   };
   return { ...(data[view] || data.dashboard), icon: tutorialIcon(view) };
 }
 
-function tutorialBlock(view) {
+function abrirTutorialModal(view = state.view) {
   const g = tutorialForView(view);
-  return `
-    <div class="tutorial-panel" data-tutorial-panel hidden>
-      
-      <div class="tutorial-content">
-        <strong>${g.title}</strong>
-        <ol>${g.steps.map((step, i) => `<li><span class="tutorial-step">${i + 1}</span><span class="tutorial-step-text">${step}</span></li>`).join('')}</ol>
+  $('#modalRoot').innerHTML = `
+    <div class="modal-backdrop" id="tutorialModal">
+      <div class="modal tutorial-modal">
+        <div class="modal-head">
+          <div>
+            <span class="eyebrow">ORIENTAÇÃO</span>
+            <h2>${g.title}</h2>
+          </div>
+          <button class="close" data-close type="button" aria-label="Fechar">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="tutorial-list">${g.steps.map((step, i) => `<div class="tutorial-list-item"><span class="tutorial-step">${i + 1}</span><span class="tutorial-step-text">${step}</span></div>`).join('')}</div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-primary" data-close type="button">Entendi</button>
+        </div>
       </div>
     </div>
   `;
+  $('#tutorialModal').addEventListener('click', e => {
+    if (e.target.matches('[data-close]')) closeModal();
+  });
 }
 
 function pageHead(title, sub, action = '') {
@@ -872,13 +1056,8 @@ function pageHead(title, sub, action = '') {
         </div>
         <p>${sub}</p>
       </div>
-      ${
-        action
-          ? `<div class="actions">${action}</div>`
-          : ''
-      }
+      ${action ? `<div class="actions">${action}</div>` : ''}
     </div>
-    ${tutorialBlock(state.view)}
   `;
 }
 
@@ -892,10 +1071,51 @@ function kpi(label, value, sub) {
   `;
 }
 
+function codigoComCopia(codigo) {
+  const valor = String(codigo || '');
+  return `
+    <span class="request-code">
+      <button
+        type="button"
+        class="copy-code-btn"
+        data-copy-code="${escapeHtml(valor)}"
+        aria-label="Copiar código ${escapeHtml(valor)}"
+        title="Copiar código"
+      >⧉</button>
+      <strong>${escapeHtml(valor)}</strong>
+    </span>
+  `;
+}
+
+async function copiarCodigo(codigo) {
+  const valor = String(codigo || '').trim();
+  if (!valor) return;
+
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(valor);
+    } else {
+      const area = document.createElement('textarea');
+      area.value = valor;
+      area.setAttribute('readonly', '');
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand('copy');
+      area.remove();
+    }
+    showToast('Código copiado.');
+  } catch (error) {
+    console.error('Erro ao copiar código:', error);
+    showToast('Não foi possível copiar o código.');
+  }
+}
+
 function requestRow(r) {
   return `
     <tr data-open="${r.id}">
-      <td><strong>${r.codigo}</strong></td>
+      <td>${codigoComCopia(r.codigo)}</td>
       <td>${r.advogado}</td>
       <td>${r.cliente}</td>
       <td>${r.tipo}</td>
@@ -952,38 +1172,58 @@ function calculistaDashboard() {
   const rows = minhasSolicitacoes();
   const abertas = rows.filter(r => !['CONCLUÍDO', 'CANCELADO'].includes(r.status));
   const novas = rows.filter(r => r.status === 'NOVO');
-  const calculo = rows.filter(r => r.status === 'EM CÁLCULO');
-  const revisao = rows.filter(r => r.status === 'EM REVISÃO');
+  const calculo = rows.filter(r => r.status === 'EM_CÁLCULO');
+  const revisao = rows.filter(r => estaEmRevisao(r.status));
   const atrasadas = abertas.filter(r => daysTo(r.prazo) < 0);
+  const concluidas = rows.filter(r => r.status === 'CONCLUÍDO').length;
 
   const tarefaRow = r => `
     <tr data-open-calculista="${r.id}" style="cursor:pointer">
-      <td><strong>${r.codigo}</strong></td>
+      <td>${codigoComCopia(r.codigo)}</td>
       <td>${r.cliente}</td>
       <td>${r.tipo}</td>
       <td>${r.processo}</td>
       <td>${fmtDate(r.prazo)}</td>
-      <td><span class="status ${statusClass(r.status)}">${statusLabel[r.status] || r.status}</span></td>
+      <td><span class="status ${statusClassCalculista(r)}">${statusLabelCalculista(r)}</span></td>
       <td>${r.prioridade}</td>
     </tr>`;
 
   return pageHead(
     `Olá, ${currentProfile?.nome || 'Calculista'}`,
-    'Painel de produção — suas solicitações atribuídas.',
+    'Minha produção — solicitações atribuídas a você.',
     ''
   ) + `
-    <div class="grid kpi-grid">
+    <div class="grid kpi-grid calculista-kpis">
       ${kpi('Novas', novas.length, 'Aguardando início')}
       ${kpi('Em cálculo', calculo.length, 'Trabalhos em andamento')}
       ${kpi('Em revisão', revisao.length, 'Aguardando conferência')}
       ${kpi('Atrasadas', atrasadas.length, 'Exigem atenção')}
+      ${kpi('Concluídas', concluidas, 'Histórico da sua produção')}
     </div>
+
+    <section class="card calculista-flow" style="margin-top:18px">
+      <div class="card-head">
+        <div>
+          <h2>Seu fluxo de trabalho</h2>
+          <p class="muted" style="margin-top:4px">Você executa a produção e envia o cálculo para revisão. A entrega e o encerramento financeiro são administrativos.</p>
+        </div>
+      </div>
+      <div class="flow-steps">
+        <div class="flow-step"><span>1</span><strong>Receber</strong><small>Solicitação atribuída</small></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step"><span>2</span><strong>Calcular</strong><small>Produção do cálculo</small></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step"><span>3</span><strong>Revisar</strong><small>Enviar para revisão</small></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step muted-step"><span>4</span><strong>Entregar</strong><small>Etapa administrativa</small></div>
+      </div>
+    </section>
 
     <section class="card" style="margin-top:18px">
       <div class="card-head">
         <div>
           <h2>Minhas solicitações</h2>
-          <p class="muted" style="margin-top:4px">Clique em uma solicitação para abrir os dados de produção.</p>
+          <p class="muted" style="margin-top:4px">Abra uma solicitação para consultar documentos, orientações e executar a próxima etapa.</p>
         </div>
       </div>
       ${rows.length ? `
@@ -1002,21 +1242,412 @@ function calculistaDashboard() {
   `;
 }
 
+
+function saldoPendente(r) {
+  return Math.max(0, Number(r?.valor || 0) - Number(r?.recebido || 0));
+}
+
+function formatarFormaPagamento(valor) {
+  const mapa = {
+    PIX: 'PIX',
+    CREDITO: 'Crédito',
+    DEBITO: 'Débito',
+    TRANSFERENCIA: 'Transferência',
+    DINHEIRO: 'Dinheiro',
+    CARTAO: 'Cartão',
+    OUTRO: 'Outro'
+  };
+  return mapa[String(valor || '').toUpperCase()] || valor || '—';
+}
+
+function abrirModalConclusaoFinanceira(r) {
+  if (!isAdministrador()) return;
+  if (r.status !== 'AGUARDANDO_PAGAMENTO') {
+    showToast('A solicitação precisa estar aguardando pagamento para registrar um recebimento.');
+    return;
+  }
+
+  const saldo = saldoPendente(r);
+  const dataPadrao = new Date().toISOString().slice(0, 10);
+  const recebimentos = Array.isArray(r.pagamentos) ? r.pagamentos.slice().sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || ''))) : [];
+
+  $('#modalRoot').innerHTML = `
+    <div class="modal-backdrop" id="financialCloseModal">
+      <div class="modal financial-modal" style="max-width:900px">
+        <div class="modal-head">
+          <div>
+            <h2>Registrar recebimento</h2>
+            <small class="muted">${escapeHtml(r.codigo)} · ${escapeHtml(r.cliente)}</small>
+          </div>
+          <button class="close" data-close>×</button>
+        </div>
+        <form id="financialCloseForm">
+          <div class="modal-body">
+            <div class="financial-summary">
+              <div><small>Valor do serviço</small><strong>${money(r.valor)}</strong></div>
+              <div><small>Total já recebido</small><strong>${money(r.recebido)}</strong></div>
+              <div><small>Saldo a receber</small><strong>${money(saldo)}</strong></div>
+            </div>
+
+            <div class="notice" style="margin:16px 0">
+              Registre o valor efetivamente recebido. Se o pagamento for parcial, a solicitação continuará em <strong>Aguardando pagamento</strong>. Quando o saldo chegar a <strong>R$ 0,00</strong>, o sistema encerrará a solicitação como <strong>Concluído</strong>.
+            </div>
+
+            ${recebimentos.length ? `
+              <div class="card" style="margin-bottom:16px">
+                <div class="card-head"><h2>Recebimentos registrados</h2></div>
+                <div class="card-body" style="padding:0">
+                  <div class="table-wrap">
+                    <table class="data-table">
+                      <thead><tr><th>Data</th><th>Valor</th><th>Forma</th><th>Conta</th></tr></thead>
+                      <tbody>
+                        ${recebimentos.map(pagamento => `
+                          <tr>
+                            <td>${fmtDate(pagamento.data_pagamento)}</td>
+                            <td>${money(pagamento.valor)}</td>
+                            <td>${escapeHtml(formatarFormaPagamento(pagamento.forma_pagamento))}</td>
+                            <td>${escapeHtml(pagamento.conta_recebimento || '—')}</td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            ` : ''}
+
+            <div class="form-grid">
+              <div class="field">
+                <label>Valor recebido *</label>
+                <input class="input" name="valor" inputmode="decimal" value="${saldo.toFixed(2).replace('.', ',')}" required>
+              </div>
+              <div class="field">
+                <label>Data do recebimento *</label>
+                <input class="input" type="date" name="data_pagamento" value="${dataPadrao}" required>
+              </div>
+              <div class="field full">
+                <label>Conta de recebimento *</label>
+                <input class="input" name="conta_recebimento" placeholder="Ex.: Banco X · conta corrente final 1234 / chave PIX ..." required>
+                <small class="muted">Use uma identificação suficiente para eventual consulta futura. Não informe senha, token ou dado de autenticação.</small>
+              </div>
+              <div class="field">
+                <label>Forma de pagamento *</label>
+                <select class="input" name="forma_pagamento" required>
+                  <option value="">Selecione</option>
+                  <option value="PIX">PIX</option>
+                  <option value="CREDITO">Crédito</option>
+                  <option value="DEBITO">Débito</option>
+                  <option value="TRANSFERENCIA">Transferência</option>
+                  <option value="DINHEIRO">Dinheiro</option>
+                  <option value="OUTRO">Outro</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Recibo emitido?</label>
+                <select class="input" name="recibo_emitido" id="reciboEmitido">
+                  <option value="nao">Não</option>
+                  <option value="sim">Sim</option>
+                </select>
+              </div>
+              <div class="field full" id="reciboFields" hidden>
+                <div class="form-grid receipt-grid">
+                  <div class="field">
+                    <label>Número / identificação do recibo *</label>
+                    <input class="input" name="recibo_numero" placeholder="Ex.: REC-2026-00015">
+                  </div>
+                  <div class="field">
+                    <label>Data do recibo *</label>
+                    <input class="input" type="date" name="recibo_data" value="${dataPadrao}">
+                  </div>
+                  <div class="field full">
+                    <label>Informações do recibo *</label>
+                    <textarea class="input" name="recibo_observacoes" rows="3" placeholder="Descreva os dados relevantes do recibo."></textarea>
+                  </div>
+                  <div class="field full">
+                    <label>Link do recibo no Google Drive (opcional)</label>
+                    <input class="input" type="url" name="recibo_drive_url" placeholder="Cole o link do arquivo do recibo, se disponível.">
+                  </div>
+                </div>
+                <div class="drive-receipt-box">
+                  <div>
+                    <strong>Arquivo do recibo</strong>
+                    <p class="muted">Salve o recibo na pasta privada da solicitação, preferencialmente em <strong>05 - Financeiro</strong>.</p>
+                  </div>
+                  ${r.drive ? `<a class="btn" href="${escapeHtml(r.drive)}" target="_blank" rel="noopener noreferrer">Abrir pasta no Drive</a>` : '<span class="muted">Pasta do Drive ainda não vinculada.</span>'}
+                </div>
+              </div>
+              <div class="field full">
+                <label>Observação do recebimento</label>
+                <textarea class="input" name="observacao" rows="3" placeholder="Informação adicional sobre o pagamento, se necessário."></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="modal-foot">
+            <button type="button" class="btn" data-close>Cancelar</button>
+            <button type="submit" class="btn btn-primary">Registrar recebimento</button>
+          </div>
+        </form>
+      </div>
+    </div>`;
+
+  $('#financialCloseModal').addEventListener('click', e => {
+    if (e.target.matches('[data-close]')) closeModal();
+  });
+
+  const reciboSelect = $('#reciboEmitido');
+  const reciboFields = $('#reciboFields');
+  const syncRecibo = () => {
+    const sim = reciboSelect.value === 'sim';
+    reciboFields.hidden = !sim;
+    reciboFields.querySelectorAll('input, textarea').forEach(el => {
+      if (el.name === 'recibo_drive_url') return;
+      el.required = sim;
+    });
+  };
+  reciboSelect.addEventListener('change', syncRecibo);
+  syncRecibo();
+
+  $('#financialCloseForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const button = e.target.querySelector('button[type="submit"]');
+    const valorRecebido = parseMoney(f.get('valor'));
+    const dataPagamento = String(f.get('data_pagamento') || '').trim();
+    const conta = String(f.get('conta_recebimento') || '').trim();
+    const forma = String(f.get('forma_pagamento') || '').trim();
+    const reciboEmitido = f.get('recibo_emitido') === 'sim';
+    const reciboNumero = String(f.get('recibo_numero') || '').trim();
+    const reciboData = String(f.get('recibo_data') || '').trim();
+    const reciboObs = String(f.get('recibo_observacoes') || '').trim();
+    const reciboDrive = String(f.get('recibo_drive_url') || '').trim();
+    const observacao = String(f.get('observacao') || '').trim();
+    const saldoAtual = saldoPendente(r);
+
+    if (valorRecebido <= 0) return showToast('Informe um valor de recebimento maior que zero.');
+    if (valorRecebido > saldoAtual + 0.005) return showToast(`O recebimento não pode ser maior que o saldo de ${money(saldoAtual)}.`);
+    if (!conta) return showToast('Informe a conta de recebimento.');
+    if (!forma) return showToast('Selecione a forma de pagamento.');
+    if (reciboEmitido && (!reciboNumero || !reciboData || !reciboObs)) {
+      return showToast('Preencha número, data e informações do recibo.');
+    }
+
+    const quitado = valorRecebido >= saldoAtual - 0.005;
+    const novoTotalRecebido = Number(r.recebido || 0) + valorRecebido;
+    const novoSaldo = Math.max(0, Number(r.valor || 0) - novoTotalRecebido);
+
+    button.disabled = true;
+    button.textContent = quitado ? 'Registrando e concluindo...' : 'Registrando recebimento...';
+
+    const agora = new Date().toISOString();
+    const pagamento = {
+      solicitacao_id: r.id,
+      valor: valorRecebido,
+      data_pagamento: dataPagamento,
+      forma_pagamento: forma,
+      observacao: observacao || null,
+      conta_recebimento: conta,
+      recibo_emitido: reciboEmitido,
+      recibo_numero: reciboEmitido ? reciboNumero : null,
+      recibo_data: reciboEmitido ? reciboData : null,
+      recibo_observacoes: reciboEmitido ? reciboObs : null,
+      recibo_drive_url: reciboEmitido ? (reciboDrive || null) : null,
+      created_by: currentUser?.id || null
+    };
+
+    const inserido = await supabaseClient.from('pagamentos').insert(pagamento).select('id').single();
+    if (inserido.error) {
+      console.error('Erro ao registrar recebimento:', inserido.error);
+      showToast(inserido.error.message || 'Não foi possível registrar o recebimento.');
+      button.disabled = false;
+      button.textContent = 'Registrar recebimento';
+      return;
+    }
+
+    if (quitado) {
+      const atualizado = await supabaseClient.from('solicitacoes').update({
+        status: 'CONCLUIDO',
+        data_conclusao: agora,
+        updated_at: agora
+      }).eq('id', r.id).eq('status', 'AGUARDANDO_PAGAMENTO').select('id,status').maybeSingle();
+
+      if (atualizado.error || !atualizado.data) {
+        console.error('Pagamento registrado, mas não foi possível concluir a solicitação:', atualizado.error);
+        await supabaseClient.from('pagamentos').delete().eq('id', inserido.data?.id || '');
+        showToast('Não foi possível concluir a solicitação. O registro de recebimento foi revertido.');
+        button.disabled = false;
+        button.textContent = 'Registrar recebimento';
+        return;
+      }
+    }
+
+    const partes = [
+      quitado
+        ? `Recebimento final de ${money(valorRecebido)} registrado.`
+        : `Recebimento parcial de ${money(valorRecebido)} registrado.`,
+      `Forma: ${formatarFormaPagamento(forma)}.`,
+      `Conta: ${conta}.`,
+      reciboEmitido ? `Recibo emitido: ${reciboNumero}.` : 'Recibo não emitido.',
+      `Total recebido: ${money(novoTotalRecebido)}.`,
+      `Saldo restante: ${money(novoSaldo)}.`,
+      quitado ? 'Solicitação concluída.' : 'A solicitação permanece aguardando pagamento.'
+    ];
+    await supabaseClient.from('historico_solicitacao').insert({
+      solicitacao_id: r.id,
+      usuario_id: currentUser?.id || null,
+      tipo_evento: 'PAGAMENTO',
+      descricao: partes.join(' '),
+      data_hora: agora
+    });
+
+    closeModal();
+    await carregarSolicitacoes();
+    render();
+    showToast(quitado ? 'Recebimento final registrado e solicitação concluída.' : `Recebimento parcial de ${money(valorRecebido)} registrado. Saldo restante: ${money(novoSaldo)}.`);
+    openDetail(r.id);
+  });
+}
+
+async function registrarEntregaAguardandoPagamento(id) {
+  if (!isAdministrador()) return false;
+
+  const r = db.requests.find(item => item.id === id);
+  if (!r || r.status !== 'ENVIADO') {
+    showToast('A solicitação precisa estar como enviada para aguardar pagamento.');
+    return false;
+  }
+
+  const agora = new Date().toISOString();
+  const { data: atualizada, error } = await supabaseClient
+    .from('solicitacoes')
+    .update({ status: 'AGUARDANDO_PAGAMENTO', updated_at: agora })
+    .eq('id', id)
+    .eq('status', 'ENVIADO')
+    .select('id,status')
+    .maybeSingle();
+
+  if (error) {
+    console.error('Erro ao registrar entrega:', error);
+    showToast(error.message || 'Não foi possível registrar a entrega.');
+    return false;
+  }
+  if (!atualizada) {
+    showToast('A solicitação não foi alterada. Atualize os dados e tente novamente.');
+    return false;
+  }
+
+  const { error: historicoError } = await supabaseClient
+    .from('historico_solicitacao')
+    .insert({
+      solicitacao_id: id,
+      usuario_id: currentUser?.id || null,
+      tipo_evento: 'ENTREGA',
+      descricao: 'Administrador registrou a entrega e colocou a solicitação como aguardando pagamento.',
+      data_hora: agora
+    });
+
+  if (historicoError) {
+    console.error('Entrega registrada, mas houve erro ao registrar o histórico:', historicoError);
+  }
+
+  await carregarSolicitacoes();
+  render();
+  showToast('Entrega registrada. Solicitação aguardando pagamento.');
+  return true;
+}
+
+async function processarRevisaoAdministrativa(id, acao, motivo = '') {
+  if (!isAdministrador()) return false;
+
+  const r = db.requests.find(item => item.id === id);
+  if (!r || !estaEmRevisao(r.status)) {
+    showToast('A solicitação não está mais aguardando revisão.');
+    return false;
+  }
+
+  const motivoLimpo = String(motivo || '').trim();
+  if (acao === 'devolver' && !motivoLimpo) {
+    showToast('Informe o motivo da devolução para o calculista.');
+    return false;
+  }
+
+  const agora = new Date().toISOString();
+  const update = {
+    status: acao === 'aprovar' ? 'ENVIADO' : 'EM_CALCULO',
+    revisor_id: currentUser?.id || null,
+    updated_at: agora
+  };
+
+  if (acao === 'aprovar') {
+    update.data_envio = agora;
+  }
+
+  const { data: revisaoAtualizada, error } = await supabaseClient
+    .from('solicitacoes')
+    .update(update)
+    .eq('id', id)
+    .eq('status', 'EM_REVISAO')
+    .select('id,status,revisor_id,data_envio')
+    .maybeSingle();
+
+  if (error) {
+    console.error('Erro ao processar revisão:', error);
+    const detalhe = error.message || error.details || error.hint || '';
+    showToast(detalhe ? `Não foi possível concluir a revisão: ${detalhe}` : 'Não foi possível concluir a revisão.');
+    return false;
+  }
+
+  if (!revisaoAtualizada) {
+    console.error('Revisão não alterada: a solicitação pode ter mudado de status antes da confirmação.', { id, acao });
+    showToast('A solicitação não foi alterada. Atualize os dados e tente novamente.');
+    return false;
+  }
+
+  const descricao = acao === 'aprovar'
+    ? 'Administrador aprovou o cálculo e marcou a solicitação como enviada.'
+    : `Administrador devolveu o cálculo para ajuste. Motivo: ${motivoLimpo}`;
+
+  const { error: historicoError } = await supabaseClient
+    .from('historico_solicitacao')
+    .insert({
+      solicitacao_id: id,
+      usuario_id: currentUser?.id || null,
+      tipo_evento: 'REVISAO',
+      descricao,
+      data_hora: agora
+    });
+
+  if (historicoError) {
+    console.error('Revisão concluída, mas houve erro ao registrar o histórico:', historicoError);
+  }
+
+  await carregarSolicitacoes();
+  render();
+  showToast(acao === 'aprovar' ? 'Cálculo aprovado e marcado como enviado.' : 'Cálculo devolvido para ajuste.');
+  return true;
+}
+
 async function alterarStatusCalculista(id, novoStatus, descricao) {
-  const r = db.requests.find(x => x.id === id);
+  const r = minhasSolicitacoes().find(x => x.id === id);
   if (!r) return;
 
-  const statusPermitidos = ['EM_CALCULO', 'EM_REVISAO', 'CONCLUIDO'];
-  if (!statusPermitidos.includes(novoStatus)) return;
+  const transicoes = {
+    'NOVO': ['EM_CALCULO'],
+    'EM_CÁLCULO': ['EM_REVISAO'],
+    'RETRABALHO': ['EM_CALCULO']
+  };
+  const permitidos = transicoes[r.status] || [];
+  const statusBanco = novoStatus === 'EM_CALCULO' ? 'EM_CALCULO' : 'EM_REVISAO';
 
-  const update = { status: novoStatus, updated_at: new Date().toISOString() };
+  if (!permitidos.includes(novoStatus)) return;
+
+  const update = { status: statusBanco, updated_at: new Date().toISOString() };
   if (novoStatus === 'EM_CALCULO' && !r.data_inicio) update.data_inicio = new Date().toISOString();
-  if (novoStatus === 'CONCLUIDO') update.data_conclusao = new Date().toISOString();
 
   const { error } = await supabaseClient
     .from('solicitacoes')
     .update(update)
-    .eq('id', id);
+    .eq('id', id)
+    .eq('calculista_id', r.calculistaId);
 
   if (error) {
     console.error('Erro ao atualizar status:', error);
@@ -1038,6 +1669,7 @@ async function alterarStatusCalculista(id, novoStatus, descricao) {
 }
 
 function openCalculistaDetail(id) {
+  if (!isCalculista()) return;
   const r = minhasSolicitacoes().find(x => x.id === id);
   if (!r) return;
 
@@ -1045,11 +1677,8 @@ function openCalculistaDetail(id) {
   if (r.status === 'NOVO') {
     botoes.push(`<button class="btn btn-primary" data-calc-action="start" data-id="${r.id}">▶ Iniciar cálculo</button>`);
   }
-  if (r.status === 'EM CÁLCULO') {
+  if (r.status === 'EM_CÁLCULO' || r.status === 'RETRABALHO') {
     botoes.push(`<button class="btn btn-primary" data-calc-action="review" data-id="${r.id}">✓ Enviar para revisão</button>`);
-  }
-  if (r.status === 'EM REVISÃO') {
-    botoes.push(`<button class="btn btn-primary" data-calc-action="done" data-id="${r.id}">✓ Marcar como concluído</button>`);
   }
 
   const root = document.getElementById('drawerRoot');
@@ -1061,31 +1690,51 @@ function openCalculistaDetail(id) {
           <button class="icon-btn" data-calc-close>×</button>
         </div>
         <div class="drawer-body">
-          <div class="detail-status"><span class="status ${statusClass(r.status)}">${statusLabel[r.status] || r.status}</span></div>
+          <div class="detail-status">
+            <span class="status ${statusClassCalculista(r)}">${statusLabelCalculista(r)}</span>
+            ${devolucaoPendenteParaCalculista(r) ? '<span class="status devolvido" style="margin-left:6px">Retorno da revisão</span>' : ''}
+          </div>
           <div class="detail-grid">
-            <div><small>Cliente</small><strong>${r.cliente}</strong></div>
-            <div><small>Processo</small><strong>${r.processo}</strong></div>
-            <div><small>Serviço</small><strong>${r.tipo}</strong></div>
-            <div><small>Área</small><strong>${r.area}</strong></div>
-            <div><small>Prazo</small><strong>${fmtDate(r.prazo)}</strong></div>
-            <div><small>Prioridade</small><strong>${r.prioridade}</strong></div>
+            <div class="detail-box"><small>Cliente</small><strong>${r.cliente || '—'}</strong></div>
+            <div class="detail-box"><small>Processo</small><strong>${r.processo || '—'}</strong></div>
+            <div class="detail-box"><small>Serviço</small><strong>${r.tipo || '—'}</strong></div>
+            <div class="detail-box"><small>Área</small><strong>${r.area || '—'}</strong></div>
+            <div class="detail-box"><small>Prazo</small><strong>${fmtDate(r.prazo)}</strong></div>
+            <div class="detail-box"><small>Prioridade</small><strong>${r.prioridade || '—'}</strong></div>
           </div>
 
+          ${devolucaoPendenteParaCalculista(r) ? `
+            <div class="card return-notice" style="margin-top:18px">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <h3 style="margin:0">Devolvido para ajuste</h3>
+                <span class="status devolvido">Devolvido</span>
+              </div>
+              <p class="muted" style="margin-top:10px;white-space:pre-wrap">${escapeHtml(motivoUltimaDevolucao(r))}</p>
+              ${(() => {
+                const evento = ultimaDevolucaoRevisao(r);
+                return evento ? `<small class="muted">${escapeHtml(evento[0] || '')}</small>` : '';
+              })()}
+            </div>` : ''}
+
           <div class="card" style="margin-top:18px;padding:16px">
-            <h3>Observações para o cálculo</h3>
-            <p class="muted" style="margin-top:8px;white-space:pre-wrap">${r.descricao || 'Nenhuma observação registrada.'}</p>
+            <h3>Orientações para o cálculo</h3>
+            <p class="muted" style="margin-top:8px;white-space:pre-wrap">${r.descricao || 'Nenhuma orientação registrada.'}</p>
           </div>
 
           <div class="card" style="margin-top:18px;padding:16px">
             <h3>Documentos</h3>
             <p class="muted" style="margin:6px 0 14px">Os documentos ficam na pasta privada da solicitação.</p>
-            ${r.drive ? `<a class="btn btn-secondary" href="${r.drive}" target="_blank" rel="noopener noreferrer">📁 Abrir pasta no Drive</a>` : '<div class="empty">Pasta do Drive ainda não vinculada.</div>'}
+            ${r.drive ? `<a class="btn btn-secondary" href="${r.drive}" target="_blank" rel="noopener noreferrer">Abrir pasta no Drive</a>` : '<div class="empty">Pasta do Drive ainda não vinculada.</div>'}
           </div>
 
           <div class="card" style="margin-top:18px;padding:16px">
             <h3>Execução</h3>
-            <p class="muted" style="margin:6px 0 14px">${r.sistema ? `Sistema indicado: ${r.sistema}` : 'Sistema especializado não informado.'}</p>
-            <div class="actions">${botoes.join('') || '<span class="muted">Nenhuma ação disponível neste status.</span>'}</div>
+            <p class="muted" style="margin:6px 0 14px">${r.sistema ? `Sistema indicado: <strong>${r.sistema}</strong>` : 'Sistema especializado não informado.'}</p>
+            <div class="actions">${botoes.join('') || '<span class="muted">A solicitação está aguardando a próxima etapa administrativa.</span>'}</div>
+          </div>
+
+          <div class="notice" style="margin-top:18px">
+            <strong>Importante:</strong> ao terminar o cálculo, envie para revisão. A entrega ao solicitante, o acompanhamento do pagamento e o status <strong>Concluído</strong> são etapas administrativas.
           </div>
         </div>
       </aside>
@@ -1099,18 +1748,299 @@ function openCalculistaDetail(id) {
     const btn = e.target.closest('[data-calc-action]');
     if (!btn) return;
     const action = btn.dataset.calcAction;
-    const status = action === 'start' ? 'EM_CALCULO' : action === 'review' ? 'EM_REVISAO' : 'CONCLUIDO';
-    const desc = action === 'start' ? 'Calculista iniciou o cálculo.' : action === 'review' ? 'Cálculo enviado para revisão.' : 'Cálculo marcado como concluído pelo calculista.';
+    const status = action === 'start' ? 'EM_CALCULO' : 'EM_REVISAO';
+    const desc = action === 'start' ? 'Calculista iniciou o cálculo.' : 'Calculista enviou o cálculo para revisão.';
     btn.disabled = true;
     await alterarStatusCalculista(id, status, desc);
     root.innerHTML = '';
   });
 }
 
+function manualView() {
+  const admin = isAdministrador();
+  const calculista = isCalculista();
+  const ambos = admin && calculista;
+
+  const tabs = [
+    ['visao', 'Visão geral', true],
+    ['operacao', 'Operação', admin],
+    ['producao', 'Minha produção', calculista],
+    ['fluxo', 'Fluxo de trabalho', true],
+    ['revisao', 'Revisão', admin || calculista],
+    ['usuarios', 'Usuários', admin],
+    ['financeiro', 'Financeiro', admin],
+    ['documentos', 'Documentos', true],
+    ['integracoes', 'Integrações', admin],
+    ['historico', 'Histórico', true]
+  ].filter(x => x[2]);
+
+  if (!tabs.some(x => x[0] === state.manualTab)) state.manualTab = tabs[0][0];
+
+  const sections = {
+    visao: {
+      title: 'Visão geral',
+      intro: 'O Manual do Sistema é a documentação de referência do Gestão Computum. Use as abas para consultar conceitos, responsabilidades, fluxos e procedimentos.',
+      articles: [
+        ['O que é o Gestão Computum', 'O Gestão Computum organiza a operação dos cálculos judiciais: solicitações, pessoas, processos, documentos, responsáveis, prazos, revisão, entrega, pagamentos, retrabalhos e histórico. Os cálculos são executados nos sistemas especializados vinculados ao serviço.'],
+        ['Perfis de acesso', 'Administrador controla o ciclo administrativo. Calculista executa a produção atribuída. Um mesmo usuário pode exercer as duas funções simultaneamente.'],
+        ['Como usar este manual', 'Consulte uma aba por assunto ou use a busca. A documentação é atualizada junto com as etapas funcionais do sistema. A ajuda contextual de cada tela explica somente o que é relevante naquele momento.'],
+        ['Regra de documentação', 'Uma etapa funcional só deve ser considerada encerrada depois de implementada, testada, validada e documentada.']
+      ]
+    },
+    operacao: {
+      title: 'Operação administrativa',
+      intro: 'Rotinas de administração das solicitações e dos cadastros.',
+      articles: [
+        ['Solicitações', 'Cadastre ou confira advogado, cliente, processo, área, serviço, prazo, prioridade, valor, origem e observações. A solicitação é o registro central do trabalho.'],
+        ['Atribuição ao calculista', 'O administrador escolhe o calculista responsável. A solicitação passa a aparecer em Minha produção para esse profissional.'],
+        ['Acompanhamento', 'O administrador acompanha status, prazo, prioridade, documentos, responsável, sistema especializado, revisão, entrega e situação financeira. Após a aprovação, registra a entrega administrativa e coloca a solicitação como aguardando pagamento.'],
+        ['Edição e exclusão', 'Administradores podem editar solicitações e cadastros relacionados. Alterações relevantes devem preservar os vínculos e o histórico. A exclusão é uma ação administrativa e deve ser utilizada com cautela.'],
+        ['Cadastros relacionados', 'Advogados, clientes e processos são cadastros reutilizáveis. Alterar um cadastro relacionado pode refletir em todas as solicitações que utilizam aquele registro.']
+      ]
+    },
+    producao: {
+      title: 'Minha produção',
+      intro: 'Procedimentos para o calculista executar e acompanhar os trabalhos atribuídos.',
+      articles: [
+        ['Receber a solicitação', 'Confira cliente, processo, serviço, área, prazo, prioridade, orientações, documentos e sistema especializado indicado.'],
+        ['Iniciar cálculo', 'Ao iniciar efetivamente a produção, a solicitação passa para Em cálculo e o início fica registrado no histórico.'],
+        ['Executar o trabalho', 'Utilize os documentos privados da solicitação e o sistema especializado indicado para realizar a produção técnica.'],
+        ['Enviar para revisão', 'Quando a produção estiver pronta, utilize Enviar para revisão. A solicitação passa para Em revisão e o histórico registra que o calculista concluiu a etapa técnica.'],
+        ['Receber uma devolução', 'Quando o revisor devolver a solicitação, a produção permanece em EM CÁLCULO, mas é identificada visualmente como Devolvido. O motivo aparece em um bloco próprio no detalhe da produção, com a data do retorno. O calculista deve corrigir o trabalho e enviá-lo novamente para revisão.'],
+        ['O que o calculista não encerra', 'O calculista não marca a solicitação como Concluído. Entrega, pagamento e encerramento financeiro são etapas administrativas.']
+      ]
+    },
+    fluxo: {
+      title: 'Fluxo de trabalho',
+      intro: 'O ciclo principal da solicitação separa produção técnica, revisão, entrega e encerramento financeiro.',
+      articles: [
+        ['1. Novo', 'A solicitação foi registrada e ainda precisa ser analisada ou encaminhada.'],
+        ['2. Análise', 'A demanda está sendo conferida quanto a dados, documentos, serviço, prazo e condições de execução.'],
+        ['3. Aguardando documentos', 'Existem documentos ou informações necessários ainda não recebidos.'],
+        ['4. Em cálculo', 'O calculista está executando a produção técnica.'],
+        ['5. Em revisão', 'O calculista terminou a produção e enviou o trabalho para conferência administrativa.'],
+        ['6. Enviado', 'O resultado foi aprovado e entregue ao solicitante. Entrega e pagamento são eventos diferentes.'],
+        ['7. Aguardando pagamento', 'A entrega foi realizada e existe valor pendente de recebimento.'],
+        ['8. Concluído', 'A solicitação foi encerrada administrativamente após a entrega e a confirmação do recebimento conforme o fluxo financeiro adotado.'],
+        ['Fluxos excepcionais', 'Impugnação, retrabalho, pausa e cancelamento devem preservar a solicitação original e seu histórico.']
+      ]
+    },
+    revisao: {
+      title: 'Revisão',
+      intro: 'A revisão é a etapa que conecta a produção técnica à entrega administrativa.',
+      articles: [
+        ['Quando a revisão começa', 'A revisão começa quando o calculista utiliza Enviar para revisão. O status passa para Em revisão.'],
+        ['Aprovar e marcar como enviado', 'O administrador/revisor confere o trabalho e pode aprovar. A ação registra o revisor, a data de envio e altera o status para Enviado.'],
+        ['Devolver para cálculo', 'Quando houver necessidade de correção, o revisor utiliza Devolver para cálculo e informa obrigatoriamente o motivo. A solicitação retorna para Em cálculo.'],
+        ['Motivo da devolução', 'A justificativa deve ser apresentada ao calculista na área de produção, para que ele saiba o que precisa corrigir. A devolução também permanece registrada no histórico.'],
+        ['Nova revisão', 'Depois da correção, o calculista envia novamente para revisão. O novo ciclo deve ficar registrado no histórico, sem apagar a devolução anterior.'],
+        ['Revisão pelo próprio administrador-calculista', 'Usuário com as duas funções pode revisar trabalhos atribuídos a ele. O sistema não bloqueia essa situação por autoria.']
+      ]
+    },
+    usuarios: {
+      title: 'Usuários e permissões',
+      intro: 'Configuração dos acessos e das funções atribuídas a cada pessoa.',
+      articles: [
+        ['Perfis', 'Os perfis funcionais são Administrador e Calculista. As funções podem ser acumuladas pelo mesmo usuário.'],
+        ['Administrador', 'Acessa os módulos administrativos, acompanha todas as solicitações, atribui trabalhos, revisa, entrega, acompanha pagamentos e administra configurações.'],
+        ['Calculista', 'Acessa Minha produção, trabalha nas solicitações atribuídas, consulta documentos, executa a produção e envia para revisão.'],
+        ['Administrador + Calculista', 'O mesmo usuário pode ter acesso administrativo e também atuar como calculista. Patrick é o exemplo da configuração inicial do sistema.'],
+        ['Novo usuário', 'O cadastro futuro deve permitir nome, e-mail, perfil, situação e, quando aplicável, vínculo com um cadastro de calculista.'],
+        ['Alteração de e-mail', 'Alterar o e-mail de acesso deve preservar o mesmo usuário, identificador, permissões, vínculo como calculista, solicitações e histórico. Não se deve excluir e recriar a pessoa apenas para trocar o e-mail.'],
+        ['Ativação e desativação', 'Usuários inativos não devem conseguir acessar o sistema. A desativação deve preservar os registros históricos e as solicitações já relacionadas ao usuário.']
+      ]
+    },
+    financeiro: {
+      title: 'Financeiro',
+      intro: 'Acompanhamento do valor do serviço, pagamentos e encerramento.',
+      articles: [
+        ['Valor do serviço', 'A solicitação registra o valor cobrado e, quando aplicável, desconto e valor final.'],
+        ['Aguardando pagamento', 'Depois da entrega, a solicitação pode permanecer aguardando pagamento até que o recebimento seja registrado.'],
+        ['Pagamento recebido', 'O recebimento é registrado vinculado à solicitação. O saldo pendente deve refletir os pagamentos registrados.'],
+        ['Conclusão financeira', 'Concluído é alcançado pelo fluxo Registrar recebimento e concluir. O sistema registra valor, data, conta de recebimento, forma de pagamento e, quando houver, os dados do recibo. O total recebido passa a compor Recebido e deixa de compor A receber.'],
+        ['Conta de recebimento', 'Registre uma identificação suficiente para eventual consulta futura. Não devem ser armazenadas senhas, tokens ou dados de autenticação.'],
+        ['Forma de pagamento', 'O registro aceita PIX, crédito, débito, transferência, dinheiro ou outra forma configurada.'],
+        ['Recibo', 'Se houver recibo, informe número/identificação, data e informações relevantes. O sistema permite registrar o link do arquivo e abrir a pasta privada da solicitação no Google Drive para armazenamento do documento.'],
+        ['Pasta financeira', 'O recibo deve ser guardado preferencialmente em 05 - Financeiro dentro da pasta privada da solicitação. A criação automática dessa subpasta depende da configuração do Apps Script do Drive.']
+      ]
+    },
+    documentos: {
+      title: 'Documentos e Google Drive',
+      intro: 'Os arquivos permanecem privados no Google Drive e são organizados por solicitação.',
+      articles: [
+        ['Recebimento por Forms', 'O Google Forms recebe PDFs, imagens e outros documentos permitidos. O Apps Script organiza os arquivos na pasta correspondente à solicitação.'],
+        ['Estrutura da pasta', 'A estrutura padrão é Computum/Gestão/CJ-2026-xxxxx, com 01 - Documentos recebidos, 02 - Cálculos, 03 - Parecer, 04 - Retrabalho e, para documentos financeiros, 05 - Financeiro.'],
+        ['Vincular pasta', 'O administrador pode vincular o endereço da pasta à solicitação para acesso rápido pelo Gestão Computum.'],
+        ['Privacidade', 'Os arquivos devem continuar sujeitos às permissões privadas do Google Drive. O sistema não deve exigir que os documentos sejam públicos.']
+      ]
+    },
+    integracoes: {
+      title: 'Integrações',
+      intro: 'Serviços externos usados pelo Gestão Computum.',
+      articles: [
+        ['Google Forms', 'Usado para receber documentos. O formulário atual é o ponto de entrada dos arquivos recebidos.'],
+        ['Google Drive + Apps Script', 'O Apps Script organiza automaticamente os arquivos enviados na pasta da solicitação.'],
+        ['Supabase', 'Responsável pela autenticação, banco de dados, registros e controle de acesso do sistema.'],
+        ['Sistemas especializados', 'Abono Computum, Diferenças Computum e Saúde Computum são exemplos de sistemas de execução vinculados às solicitações.']
+      ]
+    },
+    historico: {
+      title: 'Histórico e rastreabilidade',
+      intro: 'O histórico registra a evolução da solicitação e deve refletir o que realmente ocorreu.',
+      articles: [
+        ['Eventos', 'Mudanças relevantes devem registrar descrição, usuário e data/hora.'],
+        ['Status', 'Uma alteração manual de status deve registrar a transição real. O histórico não deve atribuir ao calculista uma ação que foi feita pelo administrador.'],
+        ['Revisão', 'Envio para revisão, aprovação e devolução devem permanecer distinguíveis no histórico.'],
+        ['Auditoria', 'O histórico é a trilha operacional da solicitação e deve ser preservado mesmo quando a demanda avança para etapas posteriores.']
+      ]
+    }
+  };
+
+  const query = String(state.manualQuery || '').trim().toLowerCase();
+  const active = sections[state.manualTab] || sections.visao;
+  const matches = active.articles.filter(([title, body]) => !query || `${title} ${body}`.toLowerCase().includes(query));
+
+  const roleTitle = ambos ? 'Manual do Administrador e Calculista' : admin ? 'Manual do Administrador' : 'Manual do Calculista';
+  const roleIntro = ambos
+    ? 'Documentação funcional e operacional para quem administra o ciclo das solicitações e também executa cálculos.'
+    : admin
+      ? 'Documentação funcional e operacional das rotinas administrativas do Gestão Computum.'
+      : 'Documentação funcional e operacional das rotinas de produção atribuídas ao calculista.';
+
+  return `
+    <div class="manual-page-head">
+      <div>
+        <div class="manual-kicker">GESTÃO COMPUTUM · DOCUMENTAÇÃO INTERNA</div>
+        <h1>Manual do sistema</h1>
+        <p>${roleIntro}</p>
+      </div>
+      <div class="manual-version">Versão 0.6 · 29/09/2026</div>
+    </div>
+
+    <section class="manual-hero card">
+      <div>
+        <h2>${roleTitle}</h2>
+        <p>Consulte os capítulos por assunto ou pesquise diretamente pelo procedimento que procura.</p>
+      </div>
+      <label class="manual-search">
+        <span>Pesquisar no manual</span>
+        <input id="manualSearch" class="input" type="search" value="${escapeHtml(state.manualQuery)}" placeholder="Ex.: devolver cálculo, usuário, pagamento..." autocomplete="off">
+      </label>
+    </section>
+
+    <section class="manual-workspace card">
+      <nav class="manual-tabs" aria-label="Capítulos do manual">
+        ${tabs.map(([id,label]) => `<button type="button" class="manual-tab ${state.manualTab === id ? 'active' : ''}" data-manual-tab="${id}">${label}</button>`).join('')}
+      </nav>
+
+      <div class="manual-content-head">
+        <div>
+          <span class="manual-section-kicker">CAPÍTULO</span>
+          <h2>${active.title}</h2>
+          <p>${active.intro}</p>
+        </div>
+        <span class="manual-result-count">${matches.length} tópico${matches.length === 1 ? '' : 's'}</span>
+      </div>
+
+      <div class="manual-articles">
+        ${matches.length ? matches.map(([title,body], index) => `
+          <article class="manual-article">
+            <div class="manual-article-number">${String(index + 1).padStart(2,'0')}</div>
+            <div>
+              <h3>${title}</h3>
+              <p>${body}</p>
+            </div>
+          </article>`).join('') : `
+          <div class="manual-empty">
+            <strong>Nenhum tópico encontrado.</strong>
+            <p>Tente outro termo ou limpe a pesquisa.</p>
+          </div>`}
+      </div>
+    </section>
+
+    <section class="manual-help card">
+      <div>
+        <span class="manual-section-kicker">AJUDA CONTEXTUAL</span>
+        <h2>Como funciona esta tela</h2>
+        <p>Nas páginas operacionais, o ícone de informação junto ao título abre uma explicação curta sobre a função daquela área. O manual permanece como referência completa.</p>
+      </div>
+      <div class="manual-source">
+        <strong>Fonte oficial</strong>
+        <span>docs/MANUAL_DO_SISTEMA.md</span>
+        <span>Atualizado junto com as etapas funcionais validadas.</span>
+      </div>
+    </section>
+  `;
+}
+
+function abrirVincularCalculistaUsuarioModal(calculista) {
+  if (!isAdministrador()) return;
+  const usuarios = db.usuarios.filter(u => u.ativo !== false);
+  $('#modalRoot').innerHTML = `
+    <div class="modal-backdrop" id="linkCalcUserModal">
+      <div class="modal">
+        <div class="modal-head">
+          <div><span class="eyebrow">ACESSO</span><h2>Vincular usuário</h2></div>
+          <button class="close" data-close type="button" aria-label="Fechar">×</button>
+        </div>
+        <form id="linkCalcUserForm">
+          <div class="modal-body">
+            <div class="notice" style="margin-bottom:16px">
+              Calculista: <strong>${calculista.nome}</strong><br>
+              O usuário vinculado poderá acessar <strong>Minha produção</strong> e receber as solicitações atribuídas a este cadastro.
+            </div>
+            <div class="field">
+              <label for="calcUserId">Usuário do sistema</label>
+              <select class="input" id="calcUserId" name="usuario_id">
+                <option value="">Sem usuário vinculado</option>
+                ${usuarios.map(u => `<option value="${u.id}" ${u.id === calculista.usuario_id ? 'selected' : ''}>${u.nome} — ${u.email}</option>`).join('')}
+              </select>
+            </div>
+            <small class="muted" style="display:block;margin-top:8px">O usuário precisa existir no Supabase Auth e na tabela de usuários do Gestão.</small>
+          </div>
+          <div class="modal-foot">
+            <button type="button" class="btn" data-close>Cancelar</button>
+            <button type="submit" class="btn btn-primary">Salvar vínculo</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+  $('#linkCalcUserModal').addEventListener('click', e => {
+    if (e.target.matches('[data-close]')) closeModal();
+  });
+  $('#linkCalcUserForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const usuarioId = new FormData(e.target).get('usuario_id') || null;
+    const button = e.target.querySelector('button[type="submit"]');
+    button.disabled = true;
+    const { error } = await supabaseClient
+      .from('calculistas')
+      .update({ usuario_id: usuarioId, updated_at: new Date().toISOString() })
+      .eq('id', calculista.id);
+    if (error) {
+      console.error('Erro ao vincular calculista:', error);
+      showToast('Não foi possível salvar o vínculo. Verifique se a migração V23 foi executada.');
+      button.disabled = false;
+      return;
+    }
+    closeModal();
+    await carregarSolicitacoes();
+    atualizarUsuarioInterface();
+    render();
+    showToast(usuarioId ? 'Usuário vinculado ao calculista.' : 'Vínculo removido.');
+  });
+}
+
 const views = {
 
+  producao() {
+    if (!isCalculista()) return views.dashboard();
+    return calculistaDashboard();
+  },
+
   dashboard() {
-    if (isCalculista()) {
+    if (isCalculista() && !isAdministrador()) {
       return calculistaDashboard();
     }
 
@@ -1147,7 +2077,7 @@ const views = {
         0
       );
 
-    const retr = 2;
+    const retr = db.retrabalhosCount || 0;
 
     const attention =
       db.requests.filter(
@@ -1417,6 +2347,7 @@ const views = {
         ${
           names
             .map(n => {
+              const calc = db.calculistas.find(c => c.nome === n);
               const rs =
                 db.requests.filter(
                   r => r.advogado === n
@@ -1661,6 +2592,7 @@ const views = {
         ${
           names
             .map(n => {
+              const calc = db.calculistas.find(c => c.nome === n);
               const rs =
                 db.requests.filter(
                   r =>
@@ -1702,6 +2634,17 @@ const views = {
                         <p>Calculista</p>
                       </div>
 
+                    </div>
+                    <div class="mini-status">
+                      ${(() => {
+                        const u = calc?.usuario_id ? db.usuarios.find(x => x.id === calc.usuario_id && x.ativo !== false) : db.usuarios.find(x => (x.nome || '').trim().toLowerCase() === (n || '').trim().toLowerCase() && x.ativo !== false);
+                        return u
+                          ? `<span class="status concluido">Acesso vinculado</span><small>${u.email || ''}</small>`
+                          : `<span class="status aguardando">Sem acesso</span><small>Crie o usuário no Supabase para liberar o login.</small>`;
+                      })()}
+                    </div>
+                    <div class="actions" style="margin-top:12px">
+                      <button class="btn btn-secondary" type="button" data-link-calculista="${calc?.id || ''}">Vincular usuário</button>
                     </div>
 
                     <div class="mini-stats">
@@ -1840,9 +2783,7 @@ const views = {
                       <tr data-open="${r.id}">
 
                         <td>
-                          <strong>
-                            ${r.codigo}
-                          </strong>
+                          ${codigoComCopia(r.codigo)}
                         </td>
 
                         <td>
@@ -1900,6 +2841,66 @@ const views = {
 
           </table>
 
+        </div>
+
+      </div>
+
+      <div
+        class="card"
+        style="margin-top:16px"
+      >
+
+        <div class="card-head">
+          <div>
+            <h2>Histórico financeiro</h2>
+            <p class="muted" style="margin-top:4px">Solicitações encerradas financeiramente e seus recebimentos registrados.</p>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Solicitação</th>
+                <th>Advogado</th>
+                <th>Serviço</th>
+                <th>Cobrado</th>
+                <th>Recebido</th>
+                <th>Último recebimento</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${
+                db.requests
+                  .filter(r => r.status === 'CONCLUÍDO')
+                  .map(r => `
+                    <tr data-open="${r.id}">
+                      <td>${codigoComCopia(r.codigo)}</td>
+                      <td>${escapeHtml(r.advogado)}</td>
+                      <td>${escapeHtml(r.tipo)}</td>
+                      <td class="money">${money(r.valor)}</td>
+                      <td class="money">${money(r.recebido)}</td>
+                      <td>
+                        ${r.ultimoPagamento
+                          ? `${fmtDate(r.ultimoPagamento.data_pagamento)} · ${escapeHtml(formatarFormaPagamento(r.ultimoPagamento.forma_pagamento))}`
+                          : '<span class="muted">Sem pagamento registrado</span>'}
+                      </td>
+                      <td>
+                        <span class="status concluido">Concluído</span>
+                      </td>
+                    </tr>
+                  `)
+                  .join('') || `
+                    <tr>
+                      <td colspan="7">
+                        <div class="empty">Nenhuma solicitação concluída financeiramente.</div>
+                      </td>
+                    </tr>
+                  `
+              }
+            </tbody>
+          </table>
         </div>
 
       </div>
@@ -2011,6 +3012,10 @@ const views = {
       </div>
       `
     );
+  },
+
+  manual() {
+    return manualView();
   },
 
   configuracoes() {
@@ -2349,30 +3354,10 @@ function newModal() {
                   <option value="">
                     Selecione
                   </option>
-
-                  <option>
-                    Previdenciário
-                  </option>
-
-                  <option>
-                    Trabalhista
-                  </option>
-
-                  <option>
-                    Servidor Público
-                  </option>
-
-                  <option>
-                    Cível
-                  </option>
-
-                  <option>
-                    Tributário
-                  </option>
-
-                  <option>
-                    Saúde
-                  </option>
+                  ${db.areas
+                    .filter(a => a.ativo !== false)
+                    .map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.nome)}</option>`)
+                    .join('')}
                 </select>
               </div>
 
@@ -2390,6 +3375,30 @@ function newModal() {
                     Selecione a área primeiro
                   </option>
                 </select>
+              </div>
+
+              <div
+                class="field full"
+                id="newTipoOutroWrap"
+                style="display:none"
+              >
+                <label for="newTipoOutro">
+                  Especifique o tipo de serviço *
+                </label>
+
+                <input
+                  id="newTipoOutro"
+                  name="tipo_servico_outro"
+                  class="input"
+                  maxlength="100"
+                  placeholder="Descreva o tipo de serviço"
+                >
+
+                <small
+                  class="muted"
+                  id="newTipoOutroCounter"
+                  style="display:block;margin-top:5px"
+                >0/100</small>
               </div>
 
               <div class="field">
@@ -2521,104 +3530,74 @@ function newModal() {
   `;
 }
 
-const serviceMap = {
-  'Previdenciário': [
-    'Liquidação de sentença',
-    'Revisão de RMI',
-    'Atualização',
-    'LOAS',
-    'Outro'
-  ],
+function obterTiposParaArea(areaId) {
+  // 'Outro' é uma opção especial do formulário e deve aparecer sempre por último,
+  // independentemente de existir ou não como registro em tipos_servico.
+  const tipos = db.tipos
+    .filter(t =>
+      t.ativo !== false &&
+      String(t.area_id) === String(areaId) &&
+      String(t.nome || '').trim().toLowerCase() !== 'outro'
+    )
+    .sort((a, b) => {
+      const ordemA = Number(a.ordem ?? 9999);
+      const ordemB = Number(b.ordem ?? 9999);
+      if (ordemA !== ordemB) return ordemA - ordemB;
+      return String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR');
+    });
 
-  'Trabalhista': [
-    'Liquidação',
-    'Dano material',
-    'Dano moral',
-    'Atualização',
-    'Outro'
-  ],
+  return [
+    ...tipos,
+    { id: '__OUTRO__', nome: 'Outro', area_id: areaId, ativo: true, ordem: 99999 }
+  ];
+}
 
-  'Servidor Público': [
-    'Abono de Permanência',
-    'Verbas remuneratórias',
-    '13º salário',
-    'Férias',
-    'Outro'
-  ],
+function preencherTiposNovo(areaId, valorSelecionado = '') {
+  const tipo = $('#newTipo');
+  if (!tipo) return;
+  const tipos = obterTiposParaArea(areaId);
+  tipo.innerHTML = '<option value="">Selecione</option>' + tipos.map(t => {
+    const value = t.id === '__OUTRO__' ? '__OUTRO__' : t.id;
+    return `<option value="${escapeHtml(value)}">${escapeHtml(t.nome)}</option>`;
+  }).join('');
+  if (valorSelecionado) tipo.value = valorSelecionado;
+}
 
-  'Cível': [
-    'Dano material',
-    'Dano moral',
-    'Liquidação',
-    'Atualização',
-    'Outro'
-  ],
-
-  'Tributário': [
-    'Diferenças',
-    'Atualização',
-    'Liquidação',
-    'Outro'
-  ],
-
-  'Saúde': [
-    'Plano de Saúde',
-    'Dano material',
-    'Dano moral',
-    'Liquidação',
-    'Outro'
-  ]
-};
+function atualizarCampoTipoOutroNovo() {
+  const tipo = $('#newTipo');
+  const wrap = $('#newTipoOutroWrap');
+  const input = $('#newTipoOutro');
+  const counter = $('#newTipoOutroCounter');
+  if (!tipo || !wrap || !input) return;
+  const outro = tipo.value === '__OUTRO__';
+  wrap.style.display = outro ? '' : 'none';
+  input.required = outro;
+  if (!outro) input.value = '';
+  if (counter) counter.textContent = `${input.value.length}/100`;
+}
 
 function openNew() {
-  $('#modalRoot').innerHTML =
-    newModal();
+  $('#modalRoot').innerHTML = newModal();
+  const area = $('#newArea');
+  const tipo = $('#newTipo');
+  const outroInput = $('#newTipoOutro');
+  const outroCounter = $('#newTipoOutroCounter');
 
-  const area =
-    $('#newArea');
-
-  const tipo =
-    $('#newTipo');
-
-  area.addEventListener(
-    'change',
-    () => {
-      tipo.innerHTML =
-        '<option value="">Selecione</option>' +
-        (
-          serviceMap[
-            area.value
-          ] || []
-        )
-          .map(
-            x =>
-              `<option>${x}</option>`
-          )
-          .join('');
-    }
-  );
-
-  $('#requestModal')
-    .addEventListener(
-      'click',
-      e => {
-        if (
-          e.target.id ===
-            'requestModal' ||
-          e.target.matches(
-            '[data-close]'
-          )
-        ) {
-          closeModal();
-        }
-      }
-    );
-
-  $('#requestForm')
-    .addEventListener(
-      'submit',
-      createRequest
-    );
+  area.addEventListener('change', () => {
+    preencherTiposNovo(area.value);
+    atualizarCampoTipoOutroNovo();
+  });
+  tipo.addEventListener('change', atualizarCampoTipoOutroNovo);
+  if (outroInput && outroCounter) {
+    outroInput.addEventListener('input', () => {
+      if (outroInput.value.length > 100) outroInput.value = outroInput.value.slice(0, 100);
+      outroCounter.textContent = `${outroInput.value.length}/100`;
+    });
+  }
+  $('#requestModal').addEventListener('click', e => {
+    if (e.target.matches('[data-close]')) closeModal();
+  });
+  $('#requestForm').addEventListener('submit', createRequest);
 }
 
 function closeModal() {
@@ -2662,14 +3641,37 @@ async function createRequest(e) {
         f.get('processo') || ''
       ).trim();
 
-    const areaNome =
+    const areaSelecionada =
       String(
         f.get('area') || ''
       ).trim();
 
-    const tipoNome =
+    const areaCadastro =
+      db.areas.find(a => String(a.id) === areaSelecionada);
+
+    const areaNome =
+      String(
+        areaCadastro?.nome || areaSelecionada
+      ).trim();
+
+    const tipoSelecionado =
       String(
         f.get('tipo') || ''
+      ).trim();
+
+    const tipoCadastro =
+      db.tipos.find(t => String(t.id) === tipoSelecionado);
+
+    const tipoNome =
+      tipoSelecionado === '__OUTRO__'
+        ? 'Outro'
+        : String(
+            tipoCadastro?.nome || tipoSelecionado
+          ).trim();
+
+    const tipoServicoOutro =
+      String(
+        f.get('tipo_servico_outro') || ''
       ).trim();
 
     const origem =
@@ -2712,12 +3714,21 @@ async function createRequest(e) {
     if (
       !advogadoNome ||
       !clienteNome ||
+      !areaSelecionada ||
       !areaNome ||
+      !tipoSelecionado ||
       !tipoNome
     ) {
       throw new Error(
         'Preencha os campos obrigatórios.'
       );
+    }
+
+    if (tipoNome === 'Outro' && !tipoServicoOutro) {
+      throw new Error('Especifique o tipo de serviço quando selecionar Outro.');
+    }
+    if (tipoServicoOutro.length > 100) {
+      throw new Error('A especificação do tipo de serviço deve ter no máximo 100 caracteres.');
     }
 
     /*
@@ -2910,8 +3921,8 @@ async function createRequest(e) {
           'id, nome'
         )
         .eq(
-          'nome',
-          areaNome
+          'id',
+          areaSelecionada
         )
         .limit(1)
         .maybeSingle();
@@ -2933,32 +3944,59 @@ async function createRequest(e) {
      * 5. LOCALIZA / CRIA O TIPO DE SERVIÇO
      */
 
-    const tipoResult =
-      await supabaseClient
-        .from('tipos_servico')
-        .select(
-          'id, nome, area_id'
-        )
-        .eq(
-          'area_id',
-          area.id
-        )
-        .eq(
-          'nome',
-          tipoNome
-        )
-        .limit(1)
-        .maybeSingle();
+    let tipo = null;
 
-    if (tipoResult.error) {
-      throw tipoResult.error;
+    if (tipoSelecionado && tipoSelecionado !== '__OUTRO__') {
+      const tipoResult =
+        await supabaseClient
+          .from('tipos_servico')
+          .select(
+            'id, nome, area_id'
+          )
+          .eq(
+            'id',
+            tipoSelecionado
+          )
+          .eq(
+            'area_id',
+            area.id
+          )
+          .limit(1)
+          .maybeSingle();
+
+      if (tipoResult.error) {
+        throw tipoResult.error;
+      }
+
+      tipo = tipoResult.data;
     }
 
-    let tipo =
-      tipoResult.data;
+    if (!tipo) {
+      const tipoResult =
+        await supabaseClient
+          .from('tipos_servico')
+          .select(
+            'id, nome, area_id'
+          )
+          .eq(
+            'area_id',
+            area.id
+          )
+          .eq(
+            'nome',
+            tipoNome
+          )
+          .limit(1)
+          .maybeSingle();
+
+      if (tipoResult.error) {
+        throw tipoResult.error;
+      }
+
+      tipo = tipoResult.data;
+    }
 
     if (!tipo) {
-
       const novoTipo =
         await supabaseClient
           .from('tipos_servico')
@@ -2984,8 +4022,9 @@ async function createRequest(e) {
     /*
      * 6. LOCALIZA O CALCULISTA
      *
-     * Calculistas não possuem login.
-     * Eles ficam na tabela public.calculistas.
+     * O cadastro de calculistas é separado dos usuários de acesso.
+     * Quando o nome do usuário corresponde ao cadastro, ele pode exercer
+     * a função de calculista; assim, um administrador também pode calcular.
      */
 
     let calculistaId = null;
@@ -3132,6 +4171,8 @@ async function createRequest(e) {
             area.id,
           tipo_servico_id:
             tipo.id,
+          tipo_servico_outro:
+            tipoNome === 'Outro' ? (tipoServicoOutro || null) : null,
           descricao:
             descricao || null,
           prazo:
@@ -3190,7 +4231,9 @@ async function createRequest(e) {
           tipo_evento:
             'CRIACAO',
           descricao:
-            'Solicitação criada.'
+            tipoNome === 'Outro'
+              ? `Solicitação criada. Tipo de serviço: Outro — ${tipoServicoOutro}.`
+              : 'Solicitação criada.'
         });
 
     if (historicoResult.error) {
@@ -3470,6 +4513,133 @@ function openDetail(id) {
 
           </div>
 
+          ${isAdministrador() && estaEmRevisao(r.status) ? `
+          <div class="card review-card" style="margin-top:16px;border-left:4px solid var(--terracotta)">
+            <div class="card-head">
+              <div>
+                <h2>Revisão do cálculo</h2>
+                <p class="muted" style="margin-top:4px">A produção foi enviada pelo calculista e aguarda conferência administrativa.</p>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="review-actions" style="display:flex;gap:10px;flex-wrap:wrap">
+                <button class="btn btn-primary" type="button" data-review-approve="${r.id}">✓ Aprovar e marcar como enviado</button>
+                <button class="btn" type="button" data-review-return="${r.id}">↩ Devolver para cálculo</button>
+              </div>
+              <div id="reviewReturnBox" style="display:none;margin-top:14px">
+                <label class="field-label" for="reviewReturnReason">Motivo da devolução <span aria-hidden="true">*</span></label>
+                <textarea id="reviewReturnReason" class="input" rows="4" placeholder="Descreva o que precisa ser ajustado pelo calculista."></textarea>
+                <div class="actions" style="margin-top:10px">
+                  <button class="btn" type="button" data-review-cancel-return>Cancelar</button>
+                  <button class="btn btn-primary" type="button" data-review-confirm-return="${r.id}">Devolver para ajuste</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          ` : ''}
+
+          ${isAdministrador() && r.status === 'ENVIADO' ? `
+          <div class="card delivery-action-card" style="margin-top:16px;border-left:4px solid var(--terracotta)">
+            <div class="card-head">
+              <div>
+                <h2>Entrega administrativa</h2>
+                <p class="muted" style="margin-top:4px">O cálculo foi aprovado e está marcado como enviado. Registre a entrega para iniciar o acompanhamento do pagamento.</p>
+              </div>
+              <span class="status enviado">Enviado</span>
+            </div>
+            <div class="card-body">
+              <div class="actions">
+                <button class="btn btn-primary" type="button" data-register-delivery="${r.id}">Registrar entrega e aguardar pagamento</button>
+              </div>
+            </div>
+          </div>
+          ` : ''}
+
+          ${isAdministrador() && r.status === 'AGUARDANDO_PAGAMENTO' ? `
+          <div class="card financial-action-card" style="margin-top:16px">
+            <div class="card-head">
+              <div>
+                <h2>Encerramento financeiro</h2>
+                <p class="muted" style="margin-top:4px">A solicitação foi enviada e aguarda o registro do recebimento.</p>
+              </div>
+              <span class="status pagamento">Aguardando pagamento</span>
+            </div>
+            <div class="card-body">
+              <div class="financial-summary compact">
+                <div><small>Valor do serviço</small><strong>${money(r.valor)}</strong></div>
+                <div><small>Já recebido</small><strong>${money(r.recebido)}</strong></div>
+                <div><small>Saldo</small><strong>${money(saldoPendente(r))}</strong></div>
+              </div>
+              ${Array.isArray(r.pagamentos) && r.pagamentos.length ? `
+              <div style="margin-top:14px">
+                <strong>Recebimentos registrados</strong>
+                <div class="table-wrap" style="margin-top:8px">
+                  <table class="data-table">
+                    <thead><tr><th>Data</th><th>Valor</th><th>Forma</th><th>Conta</th></tr></thead>
+                    <tbody>
+                      ${r.pagamentos.map(pagamento => `
+                        <tr>
+                          <td>${fmtDate(pagamento.data_pagamento)}</td>
+                          <td>${money(pagamento.valor)}</td>
+                          <td>${escapeHtml(formatarFormaPagamento(pagamento.forma_pagamento))}</td>
+                          <td>${escapeHtml(pagamento.conta_recebimento || '—')}</td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              ` : ''}
+              <div class="actions" style="margin-top:14px">
+                <button class="btn btn-primary" type="button" data-register-payment="${r.id}">Registrar recebimento</button>
+              </div>
+            </div>
+          </div>
+          ` : ''}
+
+          ${r.status === 'CONCLUÍDO' && r.ultimoPagamento ? `
+          <div class="card financial-action-card" style="margin-top:16px">
+            <div class="card-head">
+              <div>
+                <h2>Recebimento registrado</h2>
+                <p class="muted" style="margin-top:4px">Dados do último recebimento vinculado à solicitação.</p>
+              </div>
+              <span class="status concluido">Concluído</span>
+            </div>
+            <div class="card-body">
+              <div class="financial-summary compact">
+                <div><small>Total recebido</small><strong>${money(r.recebido)}</strong></div>
+                <div><small>Último recebimento</small><strong>${money(r.ultimoPagamento.valor)}</strong></div>
+                <div><small>Data</small><strong>${fmtDate(r.ultimoPagamento.data_pagamento)}</strong></div>
+                <div><small>Forma</small><strong>${escapeHtml(formatarFormaPagamento(r.ultimoPagamento.forma_pagamento))}</strong></div>
+                <div><small>Conta</small><strong>${escapeHtml(r.ultimoPagamento.conta_recebimento || '—')}</strong></div>
+                <div><small>Recibo</small><strong>${r.ultimoPagamento.recibo_emitido ? escapeHtml(r.ultimoPagamento.recibo_numero || 'Emitido') : 'Não emitido'}</strong></div>
+              </div>
+              ${Array.isArray(r.pagamentos) && r.pagamentos.length > 1 ? `
+              <div style="margin-top:14px">
+                <strong>Histórico de recebimentos</strong>
+                <div class="table-wrap" style="margin-top:8px">
+                  <table class="data-table">
+                    <thead><tr><th>Data</th><th>Valor</th><th>Forma</th><th>Conta</th></tr></thead>
+                    <tbody>
+                      ${r.pagamentos.map(pagamento => `
+                        <tr>
+                          <td>${fmtDate(pagamento.data_pagamento)}</td>
+                          <td>${money(pagamento.valor)}</td>
+                          <td>${escapeHtml(formatarFormaPagamento(pagamento.forma_pagamento))}</td>
+                          <td>${escapeHtml(pagamento.conta_recebimento || '—')}</td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              ` : ''}
+              ${r.ultimoPagamento.recibo_drive_url ? `<div style="margin-top:12px"><a class="btn" href="${escapeHtml(r.ultimoPagamento.recibo_drive_url)}" target="_blank" rel="noopener noreferrer">Abrir recibo no Drive</a></div>` : ''}
+            </div>
+          </div>
+          ` : ''}
+
           <div
             class="card"
             style="margin-top:16px"
@@ -3566,7 +4736,7 @@ function openDetail(id) {
   $('#drawerBackdrop')
     .addEventListener(
       'click',
-      e => {
+      async e => {
 
         if (
           e.target.id ===
@@ -3576,6 +4746,64 @@ function openDetail(id) {
           )
         ) {
           closeDrawer();
+        }
+
+        const deliveryButton = e.target.closest('[data-register-delivery]');
+        if (deliveryButton) {
+          deliveryButton.disabled = true;
+          const ok = await registrarEntregaAguardandoPagamento(deliveryButton.dataset.registerDelivery);
+          if (!ok) deliveryButton.disabled = false;
+          else $('#drawerRoot').innerHTML = '';
+          return;
+        }
+
+        const paymentButton = e.target.closest('[data-register-payment]');
+        if (paymentButton) {
+          abrirModalConclusaoFinanceira(db.requests.find(x => x.id === paymentButton.dataset.registerPayment));
+          return;
+        }
+
+        const reviewApprove = e.target.closest('[data-review-approve]');
+        if (reviewApprove) {
+          reviewApprove.disabled = true;
+          const ok = await processarRevisaoAdministrativa(reviewApprove.dataset.reviewApprove, 'aprovar');
+          if (!ok) reviewApprove.disabled = false;
+          else $('#drawerRoot').innerHTML = '';
+          return;
+        }
+
+        const reviewReturn = e.target.closest('[data-review-return]');
+        if (reviewReturn) {
+          const box = $('#reviewReturnBox');
+          if (box) {
+            box.style.display = 'block';
+            const textarea = $('#reviewReturnReason');
+            if (textarea) textarea.focus();
+          }
+          return;
+        }
+
+        const reviewCancel = e.target.closest('[data-review-cancel-return]');
+        if (reviewCancel) {
+          const box = $('#reviewReturnBox');
+          if (box) box.style.display = 'none';
+          return;
+        }
+
+        const reviewConfirm = e.target.closest('[data-review-confirm-return]');
+        if (reviewConfirm) {
+          const textarea = $('#reviewReturnReason');
+          const motivo = textarea?.value || '';
+          if (!motivo.trim()) {
+            showToast('Informe o motivo da devolução.');
+            textarea?.focus();
+            return;
+          }
+          reviewConfirm.disabled = true;
+          const ok = await processarRevisaoAdministrativa(reviewConfirm.dataset.reviewConfirmReturn, 'devolver', motivo);
+          if (!ok) reviewConfirm.disabled = false;
+          else $('#drawerRoot').innerHTML = '';
+          return;
         }
 
         if (e.target.matches('[data-drive]')) {
@@ -3702,7 +4930,7 @@ function abrirEdicaoCadastro(tipo, id, requestId = null) {
     </div>`;
 
   $('#entityEditModal').addEventListener('click', e => {
-    if (e.target.id === 'entityEditModal' || e.target.matches('[data-close]')) closeModal();
+    if (e.target.matches('[data-close]')) closeModal();
   });
   $('#entityEditForm').addEventListener('submit', e => salvarEdicaoCadastro(e, tipo, id, requestId));
 }
@@ -3745,7 +4973,7 @@ function abrirNovoProcessoParaSolicitacao(requestId, clienteId = null) {
     </div>`;
 
   $('#newProcessModal').addEventListener('click', e => {
-    if (e.target.id === 'newProcessModal' || e.target.matches('[data-close]')) closeModal();
+    if (e.target.matches('[data-close]')) closeModal();
   });
   $('#newProcessForm').addEventListener('submit', async e => {
     e.preventDefault();
@@ -3906,9 +5134,12 @@ function editRequestModal(r) {
   const areaOptions = db.areas.filter(a => a.ativo !== false).map(a =>
     `<option value="${a.id}"${optionSelected(a.id, r.areaId)}>${a.nome}</option>`
   ).join('');
-  const tipoOptions = db.tipos.filter(t => t.ativo !== false && (!r.areaId || t.area_id === r.areaId)).map(t =>
-    `<option value="${t.id}"${optionSelected(t.id, r.tipoId)}>${t.nome}</option>`
-  ).join('');
+  const tiposEdicao = r.areaId ? obterTiposParaArea(r.areaId) : db.tipos.filter(t => t.ativo !== false);
+  const tipoOptions = tiposEdicao.map(t => {
+    const value = t.id === '__OUTRO__' ? '' : t.id;
+    const selected = optionSelected(t.id, r.tipoId) || (t.nome === 'Outro' && r.tipoServicoNome === 'Outro');
+    return `<option value="${value}"${selected ? ' selected' : ''}>${escapeHtml(t.nome)}</option>`;
+  }).join('');
   const advogadoOptions = db.advogados.filter(a => a.ativo !== false).map(a =>
     `<option value="${a.id}"${optionSelected(a.id, r.advogadoId)}>${a.nome}${a.oab ? ` — OAB ${a.oab}${a.uf_oab ? '/' + a.uf_oab : ''}` : ''}</option>`
   ).join('');
@@ -3937,6 +5168,10 @@ function editRequestModal(r) {
             <div class="notice" style="margin-bottom:16px">
               As alterações são salvas na mesma solicitação e ficarão disponíveis imediatamente para o calculista. A alteração também será registrada no histórico.
             </div>
+            ${r.status === 'CONCLUÍDO' ? `
+              <div class="notice" style="margin-bottom:16px">
+                Esta solicitação já foi encerrada financeiramente. O status <strong>Concluído</strong> não pode ser alterado por este formulário e o valor cobrado fica bloqueado. Novos recebimentos devem ser tratados pelo fluxo financeiro.
+              </div>` : ''}
             <div class="form-grid">
               <div class="field">
                 <label>Advogado</label>
@@ -3961,9 +5196,15 @@ function editRequestModal(r) {
               </div>
               <div class="field"><label>Área</label><select class="input" name="area_id" id="editArea">${areaOptions}</select></div>
               <div class="field"><label>Tipo de serviço</label><select class="input" name="tipo_servico_id" id="editTipo">${tipoOptions}</select></div>
+              <div class="field full" id="editTipoOutroWrap" style="display:${r.tipoServicoNome === 'Outro' ? '' : 'none'}">
+                <label for="editTipoOutro">Especifique o tipo de serviço *</label>
+                <input class="input" id="editTipoOutro" name="tipo_servico_outro" maxlength="100" value="${escapeHtml(r.tipoServicoOutro || '')}" placeholder="Descreva o tipo de serviço">
+                <small class="muted" id="editTipoOutroCounter" style="display:block;margin-top:5px">${String(r.tipoServicoOutro || '').length}/100</small>
+              </div>
               <div class="field"><label>Calculista</label><select class="input" name="calculista_id"><option value="">Não atribuído</option>${calcOptions}</select></div>
               <div class="field"><label>Status</label><select class="input" name="status">
-                ${Object.entries(statusLabel).map(([v,l]) => `<option value="${v}"${optionSelected(v,r.status)}>${l}</option>`).join('')}
+                ${Object.entries(statusLabel).filter(([v]) => v !== 'CONCLUÍDO').map(([v,l]) => `<option value="${v}"${optionSelected(v,r.status)}>${l}</option>`).join('')}
+                ${r.status === 'CONCLUÍDO' ? '<option value="CONCLUÍDO" selected disabled>Concluído — encerramento financeiro</option>' : ''}
               </select></div>
               <div class="field"><label>Prioridade</label><select class="input" name="prioridade">
                 <option value="normal"${r.prioridade === 'Normal' ? ' selected' : ''}>Normal</option>
@@ -3971,7 +5212,11 @@ function editRequestModal(r) {
                 <option value="urgente"${r.prioridade === 'Urgente' ? ' selected' : ''}>Urgente</option>
               </select></div>
               <div class="field"><label>Prazo</label><input class="input" type="date" name="prazo" value="${r.prazo || ''}"></div>
-              <div class="field"><label>Valor cobrado</label><input class="input" name="valor_cobrado" inputmode="decimal" value="${Number(r.valor || 0).toFixed(2).replace('.', ',')}"></div>
+              <div class="field">
+                <label>Valor cobrado</label>
+                <input class="input" name="valor_cobrado" inputmode="decimal" value="${Number(r.valor || 0).toFixed(2).replace('.', ',')}"${r.status === 'CONCLUÍDO' ? ' readonly aria-readonly="true" title="O valor cobrado não pode ser alterado após o encerramento financeiro."' : ''}>
+                ${r.status === 'CONCLUÍDO' ? '<small class="muted" style="display:block;margin-top:5px">Bloqueado após o encerramento financeiro.</small>' : ''}
+              </div>
               <div class="field"><label>Origem</label><select class="input" name="origem">
                 ${['Indicação','Instagram','Site','WhatsApp','Cliente antigo','LinkedIn','Outro'].map(v => `<option${r.origem === v ? ' selected' : ''}>${v}</option>`).join('')}
               </select></div>
@@ -3991,11 +5236,36 @@ function editRequestModal(r) {
 
   const area = $('#editArea');
   const tipo = $('#editTipo');
+  const outroWrap = $('#editTipoOutroWrap');
+  const outroInput = $('#editTipoOutro');
+  const outroCounter = $('#editTipoOutroCounter');
+
+  const atualizarTipoOutroEdicao = () => {
+    const outroSelecionado = tipo.selectedOptions?.[0]?.textContent.trim() === 'Outro';
+    if (outroWrap) outroWrap.style.display = outroSelecionado ? '' : 'none';
+    if (outroInput) outroInput.required = outroSelecionado;
+    if (outroCounter && outroInput) outroCounter.textContent = `${outroInput.value.length}/100`;
+  };
+
   area.addEventListener('change', () => {
-    tipo.innerHTML = '<option value="">Selecione</option>' + db.tipos.filter(t => t.ativo !== false && t.area_id === area.value).map(t => `<option value="${t.id}">${t.nome}</option>`).join('');
+    const tiposArea = obterTiposParaArea(area.value);
+    tipo.innerHTML = '<option value="">Selecione</option>' + tiposArea.map(t => {
+      const value = t.id === '__OUTRO__' ? '' : t.id;
+      return `<option value="${value}">${escapeHtml(t.nome)}</option>`;
+    }).join('');
+    atualizarTipoOutroEdicao();
   });
+
+  tipo.addEventListener('change', atualizarTipoOutroEdicao);
+  if (outroInput && outroCounter) {
+    outroInput.addEventListener('input', () => {
+      if (outroInput.value.length > 100) outroInput.value = outroInput.value.slice(0, 100);
+      outroCounter.textContent = `${outroInput.value.length}/100`;
+    });
+  }
+  atualizarTipoOutroEdicao();
   $('#editRequestModal').addEventListener('click', e => {
-    if (e.target.id === 'editRequestModal' || e.target.matches('[data-close]')) closeModal();
+    if (e.target.matches('[data-close]')) closeModal();
   });
 
   // Ações dos cadastros relacionados: listeners diretos no modal.
@@ -4034,14 +5304,18 @@ async function updateRequest(e, r) {
   const f = new FormData(e.target);
   const button = e.target.querySelector('button[type="submit"]');
   const valor = parseMoney(f.get('valor_cobrado'));
+  const tipoOutro = String(f.get('tipo_servico_outro') || '').trim();
+  const tipoSelect = e.target.querySelector('[name="tipo_servico_id"]');
+  const tipoSelecionadoNome = tipoSelect?.selectedOptions?.[0]?.textContent.trim() || '';
   const changes = {
     advogado_id: f.get('advogado_id') || null,
     cliente_id: f.get('cliente_id') || null,
     processo_id: f.get('processo_id') || null,
     area_id: f.get('area_id') || null,
     tipo_servico_id: f.get('tipo_servico_id') || null,
+    tipo_servico_outro: tipoSelecionadoNome === 'Outro' ? (tipoOutro || null) : null,
     calculista_id: f.get('calculista_id') || null,
-    status: f.get('status') || 'NOVO',
+    status: normalizarChaveStatus(f.get('status') || 'NOVO'),
     prioridade: f.get('prioridade') || 'normal',
     prazo: f.get('prazo') || null,
     valor_cobrado: valor,
@@ -4052,6 +5326,23 @@ async function updateRequest(e, r) {
     cliente_antigo: f.get('origem') === 'Cliente antigo',
     updated_at: new Date().toISOString()
   };
+  if (r.status === 'CONCLUÍDO') {
+    changes.status = 'CONCLUIDO';
+    changes.valor_cobrado = Number(r.valor || 0);
+    changes.valor_final = Number(r.valor || 0);
+  }
+  if (changes.status === 'CONCLUIDO' && r.status !== 'CONCLUÍDO') {
+    showToast('Use Registrar recebimento e concluir para encerrar financeiramente a solicitação.');
+    return;
+  }
+  if (tipoSelecionadoNome === 'Outro' && !tipoOutro) {
+    showToast('Especifique o tipo de serviço quando selecionar Outro.');
+    return;
+  }
+  if (tipoOutro.length > 100) {
+    showToast('A especificação do tipo de serviço deve ter no máximo 100 caracteres.');
+    return;
+  }
   button.disabled = true;
   button.textContent = 'Salvando...';
   const { error } = await supabaseClient.from('solicitacoes').update(changes).eq('id', r.id);
@@ -4062,7 +5353,16 @@ async function updateRequest(e, r) {
     button.textContent = 'Salvar alterações';
     return;
   }
-  const descricaoHistorico = 'Solicitação editada pelo administrador.';
+  const tipoAnterior = r.tipoServicoNome === 'Outro'
+    ? `Outro${r.tipoServicoOutro ? ` — ${r.tipoServicoOutro}` : ''}`
+    : (r.tipoServicoNome || r.tipo || 'Não informado');
+  const tipoAtual = tipoSelecionadoNome === 'Outro'
+    ? `Outro${tipoOutro ? ` — ${tipoOutro}` : ''}`
+    : (tipoSelecionadoNome || 'Não informado');
+  const detalheTipo = tipoAnterior !== tipoAtual
+    ? ` Tipo de serviço alterado de "${tipoAnterior}" para "${tipoAtual}".`
+    : '';
+  const descricaoHistorico = `Solicitação editada pelo administrador.${detalheTipo}`;
   await supabaseClient.from('historico_solicitacao').insert({ solicitacao_id: r.id, usuario_id: currentUser?.id || null, tipo_evento: 'EDICAO', descricao: descricaoHistorico });
   closeModal();
   await carregarSolicitacoes();
@@ -4098,13 +5398,97 @@ function bindView() {
   // Isso evita registrar novos listeners a cada renderização.
 }
 
+function toggleProfileMenu() {
+  const existing = document.getElementById('profileMenu');
+  if (existing) {
+    existing.remove();
+    return;
+  }
+
+  const btn = document.getElementById('profileBtn');
+  if (!btn) return;
+  const funcoes = funcoesUsuario();
+  const email = currentProfile?.email || currentUser?.email || '';
+  const menu = document.createElement('div');
+  menu.id = 'profileMenu';
+  menu.className = 'profile-menu';
+  menu.innerHTML = `
+    <div class="profile-menu-head">
+      <strong>${currentProfile?.nome || 'Usuário'}</strong>
+      <small>${email}</small>
+      <span>${funcoes.join(' · ') || 'Usuário'}</span>
+    </div>
+    <div class="profile-menu-divider"></div>
+    <button type="button" data-profile-action="manual">Manual</button>
+    <button type="button" data-profile-action="logout">Sair</button>
+  `;
+  document.body.appendChild(menu);
+  const rect = btn.getBoundingClientRect();
+  menu.style.top = `${rect.bottom + 8}px`;
+  menu.style.right = `${Math.max(12, window.innerWidth - rect.right)}px`;
+}
+
+async function sairDoSistema() {
+  const { error } = await supabaseClient.auth.signOut();
+  if (error) {
+    showToast('Não foi possível sair do sistema.');
+    return;
+  }
+  const menu = document.getElementById('profileMenu');
+  if (menu) menu.remove();
+  currentUser = null;
+  currentProfile = null;
+  mostrarLogin();
+}
+
 function initEventDelegation() {
+  const profileBtn = $('#profileBtn');
+  if (profileBtn && !profileBtn.dataset.eventsReady) {
+    profileBtn.dataset.eventsReady = 'true';
+    profileBtn.addEventListener('click', event => {
+      event.stopPropagation();
+      toggleProfileMenu();
+    });
+  }
+
+  if (!document.documentElement.dataset.profileMenuReady) {
+    document.documentElement.dataset.profileMenuReady = 'true';
+    document.addEventListener('click', event => {
+      const action = event.target.closest('[data-profile-action]');
+      if (action) {
+        const menu = document.getElementById('profileMenu');
+        if (action.dataset.profileAction === 'manual') {
+          if (menu) menu.remove();
+          nav('manual');
+        } else if (action.dataset.profileAction === 'logout') {
+          sairDoSistema();
+        }
+        return;
+      }
+      const menu = document.getElementById('profileMenu');
+      if (menu && !event.target.closest('#profileBtn') && !menu.contains(event.target)) menu.remove();
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        const menu = document.getElementById('profileMenu');
+        if (menu) menu.remove();
+      }
+    });
+  }
+
   const content = $('#content');
   const menu = $('#sidebar');
 
   if (menu && !menu.dataset.eventsReady) {
     menu.dataset.eventsReady = 'true';
     menu.addEventListener('click', event => {
+      const driveButton = event.target.closest('[data-drive-gestao]');
+      if (driveButton && menu.contains(driveButton)) {
+        event.preventDefault();
+        abrirPastaGestao();
+        return;
+      }
+
       const button = event.target.closest('.nav-item[data-view]');
       if (!button || !menu.contains(button)) return;
       event.preventDefault();
@@ -4166,13 +5550,25 @@ function initEventDelegation() {
   content.dataset.eventsReady = 'true';
 
   content.addEventListener('click', event => {
+    const manualTab = event.target.closest('[data-manual-tab]');
+    if (manualTab) {
+      state.manualTab = manualTab.dataset.manualTab || 'visao';
+      render();
+      return;
+    }
+
     const tutorial = event.target.closest('[data-tutorial]');
     if (tutorial) {
-      const panel = tutorial.closest('#content')?.querySelector('[data-tutorial-panel]');
-      if (panel) {
-        panel.hidden = !panel.hidden;
-        tutorial.classList.toggle('active', !panel.hidden);
-      }
+      abrirTutorialModal(state.view);
+      return;
+    }
+
+    const linkCalcButton = event.target.closest('[data-link-calculista]');
+    if (linkCalcButton) {
+      event.preventDefault();
+      if (!isAdministrador()) return;
+      const calculista = db.calculistas.find(x => x.id === linkCalcButton.dataset.linkCalculista);
+      if (calculista) abrirVincularCalculistaUsuarioModal(calculista);
       return;
     }
 
@@ -4191,6 +5587,14 @@ function initEventDelegation() {
     const calcButton = event.target.closest('[data-open-calculista]');
     if (calcButton) {
       openCalculistaDetail(calcButton.dataset.openCalculista);
+      return;
+    }
+
+    const copyCodeButton = event.target.closest('[data-copy-code]');
+    if (copyCodeButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      copiarCodigo(copyCodeButton.dataset.copyCode || '');
       return;
     }
 
@@ -4221,6 +5625,14 @@ function initEventDelegation() {
   });
 
   content.addEventListener('input', event => {
+    const manualSearch = event.target.closest('#manualSearch');
+    if (manualSearch) {
+      state.manualQuery = manualSearch.value;
+      clearTimeout(queryRenderTimer);
+      queryRenderTimer = setTimeout(() => render(), 100);
+      return;
+    }
+
     const q = event.target.closest('#q');
     if (q) {
       state.query = q.value;
@@ -4366,6 +5778,7 @@ initEventDelegation();
 
   if (!dadosCarregados) return;
 
+  atualizarUsuarioInterface();
   render();
 
 })();

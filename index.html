@@ -9,7 +9,7 @@
     content="Gestão Computum — controle de solicitações, cálculos judiciais, retrabalhos e financeiro."
   />
   <title>Gestão Computum</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=31.0" />
 </head>
 
 <body>
@@ -31,6 +31,11 @@
         <button class="nav-item active" data-view="dashboard">
           <span>⌂</span>
           Dashboard
+        </button>
+
+        <button class="nav-item" data-view="producao">
+          <span>∑</span>
+          Minha produção
         </button>
 
         <button class="nav-item" data-view="solicitacoes">
@@ -68,9 +73,25 @@
           Relatórios
         </button>
 
+        <button class="nav-item" data-view="manual">
+          <span>?</span>
+          Manual
+        </button>
+
       </nav>
 
       <div class="sidebar-bottom">
+
+        <button
+          class="nav-item"
+          id="driveGestaoButton"
+          data-drive-gestao
+          title="Abrir pasta Gestão no Google Drive"
+          style="display:none"
+        >
+          <span>↗</span>
+          Pasta Gestão
+        </button>
 
         <button class="nav-item" data-view="configuracoes">
           <span>⚙</span>
@@ -159,7 +180,7 @@
   <script src="supabase-client.js"></script>
 
   <!-- Aplicação -->
-  <script src="app.js"></script>
+  <script src="app.js?v=44.0"></script>
 
 </body>
 </html>
