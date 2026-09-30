@@ -1,4 +1,4 @@
-/* Gestão Computum — V50 — gestão de usuários e autenticação administrativa.
+/* Gestão Computum — V53 — gestão de usuários, permissões e exclusão segura.
    primeira versão de frontend.
    O armazenamento local abaixo é apenas modo protótipo.
    Em produção, substituir a camada store por Supabase e o upload por Google Drive.
@@ -1930,11 +1930,12 @@ function manualView() {
         ['Administrador', 'Acessa os módulos administrativos, acompanha todas as solicitações, atribui trabalhos, revisa, entrega, acompanha pagamentos e administra configurações.'],
         ['Calculista', 'Acessa Minha produção, trabalha nas solicitações atribuídas, consulta documentos, executa a produção e envia para revisão.'],
         ['Administrador + Calculista', 'O mesmo usuário pode ter acesso administrativo e também atuar como calculista. Patrick é o exemplo da configuração inicial do sistema.'],
-        ['Gerenciar usuários', 'Somente Administradores acessam o painel Usuários. Nele podem criar, editar e ativar/desativar contas, alterar e-mail e definir funções.'],
+        ['Gerenciar usuários', 'Somente Administradores acessam o painel Usuários. Nele podem criar, editar, ativar/desativar contas, alterar e-mail, definir funções e excluir contas que não possuam registros vinculados. A exclusão é bloqueada quando houver histórico ou qualquer vínculo operacional; nesses casos, a conta deve ser desativada.'],
         ['Novo usuário', 'O cadastro permite nome, e-mail, senha inicial, situação, Administrador, Calculista ou nenhuma função específica. Sem função, a conta aparece como Usuário.'],
         ['Alteração de e-mail', 'Alterar o e-mail de acesso preserva o mesmo usuário, identificador, permissões, vínculo como calculista, solicitações e histórico. Não se deve excluir e recriar a pessoa apenas para trocar o e-mail.'],
         ['Usuário já existente no Auth', 'Contas que já existem no Supabase Auth são sincronizadas pela migration 008. Depois disso, o administrador pode localizar a conta e definir suas funções no painel.'],
         ['Ativação e desativação', 'Usuários inativos não devem conseguir acessar o sistema. A desativação preserva os registros históricos e as solicitações já relacionadas ao usuário.'],
+        ['Exclusão de usuário', 'A exclusão definitiva é restrita ao Administrador. O sistema verifica solicitações, retrabalhos, arquivos, pagamentos, histórico e vínculo como calculista. Havendo qualquer registro relacionado, a exclusão é bloqueada e a conta deve ser desativada. O último administrador ativo e o próprio usuário administrador não podem ser excluídos.'],
         ['Proteção administrativa', 'O sistema deve manter pelo menos um administrador ativo; o painel bloqueia uma alteração que deixaria o projeto sem administrador.']
       ]
     },
@@ -2222,6 +2223,32 @@ async function salvarUsuarioModal(event) {
   } catch (error) {
     console.error('Erro ao gerenciar usuário:', error); showToast(error.message || 'Não foi possível salvar o usuário.');
     button.disabled = false; button.textContent = userId ? 'Salvar alterações' : 'Criar usuário';
+  }
+}
+
+async function excluirUsuarioModal(usuario) {
+  if (!isAdministrador() || !usuario?.id) return;
+
+  const nome = nomeExibicaoUsuario(usuario);
+  const confirmado = window.confirm(
+    `Excluir definitivamente o usuário "${nome}"?\n\n` +
+    `A conta será removida do Supabase Auth e do Gestão Computum somente se não houver solicitações, histórico, pagamentos, arquivos, retrabalhos ou vínculo como calculista.\n\n` +
+    `Se houver qualquer registro relacionado, a exclusão será bloqueada e o usuário deverá ser desativado.\n\n` +
+    `Esta ação não pode ser desfeita.`
+  );
+
+  if (!confirmado) return;
+
+  try {
+    const data = await chamarGerenciarUsuario({ action: 'delete', user_id: usuario.id });
+    if (data?.error) throw new Error(data.error);
+    await carregarSolicitacoes();
+    atualizarUsuarioInterface();
+    render();
+    showToast('Usuário excluído com sucesso.');
+  } catch (error) {
+    console.error('Erro ao excluir usuário:', error);
+    showToast(error.message || 'Não foi possível excluir o usuário.');
   }
 }
 
@@ -2973,7 +3000,7 @@ const views = {
                     <td><strong>${rotulo}</strong></td>
                     <td>${calc ? escapeHtml(calc.nome) : '<span class="muted">—</span>'}</td>
                     <td><span class="status ${u.ativo !== false ? 'concluido' : 'cancelado'}">${u.ativo !== false ? 'Ativo' : 'Inativo'}</span></td>
-                    <td><button class="btn btn-secondary" type="button" data-edit-user="${escapeHtml(u.id)}">Editar</button></td>
+                    <td class="actions-cell"><button class="btn btn-secondary" type="button" data-edit-user="${escapeHtml(u.id)}">Editar</button><button class="btn btn-danger" type="button" data-delete-user="${escapeHtml(u.id)}">Excluir</button></td>
                   </tr>`;
               }).join('')}
             </tbody>
@@ -5904,6 +5931,15 @@ function initEventDelegation() {
 
     const editUserButton = event.target.closest('[data-edit-user]');
     if (editUserButton) { event.preventDefault(); if (!isAdministrador()) return; const usuario = db.usuarios.find(u => u.id === editUserButton.dataset.editUser); if (usuario) abrirUsuarioModal(usuario); return; }
+
+    const deleteUserButton = event.target.closest('[data-delete-user]');
+    if (deleteUserButton) {
+      event.preventDefault();
+      if (!isAdministrador()) return;
+      const usuario = db.usuarios.find(u => u.id === deleteUserButton.dataset.deleteUser);
+      if (usuario) excluirUsuarioModal(usuario);
+      return;
+    }
 
     const linkCalcButton = event.target.closest('[data-link-calculista]');
     if (linkCalcButton) {

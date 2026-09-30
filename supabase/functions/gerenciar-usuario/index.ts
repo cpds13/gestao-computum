@@ -227,7 +227,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
-    await exigirAdministrador(req);
+    const adminContext = await exigirAdministrador(req);
 
     if (req.method !== 'POST') {
       throw new HttpError('Método não permitido.', 405);
@@ -317,6 +317,98 @@ Deno.serve(async (req) => {
 
       await aplicarPerfil(userId, nome, email, admin, calculista, ativo, calculistaId);
       return json({ ok: true });
+    }
+
+    if (action === 'delete') {
+      const userId = String(body.user_id || '').trim();
+      if (!userId) throw new HttpError('Usuário não informado.', 400);
+
+      const { data: alvo, error: alvoError } = await adminClient
+        .from('usuarios')
+        .select('id, nome, email, perfil, ativo')
+        .eq('id', userId)
+        .single();
+
+      if (alvoError) {
+        if (alvoError.code === 'PGRST116') throw new HttpError('Usuário não encontrado.', 404);
+        throw alvoError;
+      }
+
+      const authUser = adminContext.authUser;
+      if (authUser.id === userId) {
+        throw new HttpError('Não é permitido excluir o próprio usuário administrador.', 400);
+      }
+
+      if (alvo.perfil === 'administrador' && alvo.ativo === true) {
+        const { count, error: countError } = await adminClient
+          .from('usuarios')
+          .select('id', { count: 'exact', head: true })
+          .eq('perfil', 'administrador')
+          .eq('ativo', true);
+
+        if (countError) throw countError;
+        if ((count || 0) <= 1) {
+          throw new HttpError('O sistema precisa manter pelo menos um administrador ativo.', 400);
+        }
+      }
+
+      const consultas = await Promise.all([
+        adminClient.from('solicitacoes').select('id', { count: 'exact', head: true }).or(`calculista_id.eq.${userId},revisor_id.eq.${userId},created_by.eq.${userId}`),
+        adminClient.from('retrabalhos').select('id', { count: 'exact', head: true }).eq('responsavel_id', userId),
+        adminClient.from('arquivos').select('id', { count: 'exact', head: true }).eq('uploaded_by', userId),
+        adminClient.from('pagamentos').select('id', { count: 'exact', head: true }).eq('created_by', userId),
+        adminClient.from('historico_solicitacao').select('id', { count: 'exact', head: true }).eq('usuario_id', userId),
+        adminClient.from('calculistas').select('id', { count: 'exact', head: true }).eq('usuario_id', userId)
+      ]);
+
+      const labels = [
+        'solicitações',
+        'retrabalhos',
+        'arquivos',
+        'pagamentos',
+        'histórico',
+        'cadastro de calculista'
+      ];
+
+      for (let i = 0; i < consultas.length; i++) {
+        const result = consultas[i];
+        if (result.error) {
+          console.error(`Erro ao verificar vínculo para exclusão (${labels[i]}):`, result.error);
+          throw new HttpError('Não foi possível verificar os vínculos do usuário antes da exclusão.', 500);
+        }
+      }
+
+      const totalVinculos = consultas.reduce((sum, item) => sum + (item.count || 0), 0);
+      if (totalVinculos > 0) {
+        const detalhes = consultas
+          .map((item, index) => item.count ? `${labels[index]}: ${item.count}` : null)
+          .filter(Boolean)
+          .join(', ');
+        throw new HttpError(
+          `Este usuário possui registros vinculados (${detalhes}). Desative o usuário para preservar o histórico; a exclusão definitiva não é permitida.`,
+          409
+        );
+      }
+
+      const { error: calcDeleteError } = await adminClient
+        .from('calculistas')
+        .delete()
+        .eq('usuario_id', userId);
+      if (calcDeleteError) throw calcDeleteError;
+
+      const { error: usuarioDeleteError } = await adminClient
+        .from('usuarios')
+        .delete()
+        .eq('id', userId);
+      if (usuarioDeleteError) throw usuarioDeleteError;
+
+      const { error: authDeleteError } = await adminClient.auth.admin.deleteUser(userId);
+      if (authDeleteError) {
+        console.error('Usuário removido do cadastro interno, mas falhou a exclusão no Auth:', authDeleteError);
+        throw new HttpError('O cadastro interno foi removido, mas não foi possível excluir a conta de autenticação. Verifique o Supabase Auth.', 500);
+      }
+
+      return json({ ok: true, deleted: true, user_id: userId });
     }
 
     if (action === 'ensure-profile') {

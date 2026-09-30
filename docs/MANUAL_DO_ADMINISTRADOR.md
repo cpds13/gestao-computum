@@ -213,3 +213,12 @@ Toda alteração futura de usuários, permissões, autenticação ou vínculo co
 
 ### Permissão do perfil Usuário — V51
 O perfil Usuário pode consultar os painéis de Advogados, Clientes, Processos, Calculistas e Relatórios. Esses painéis são somente leitura para esse perfil: criação, edição, exclusão e vínculo administrativo permanecem restritos ao Administrador.
+
+
+## Exclusão de usuário
+
+No painel **Usuários**, o Administrador pode usar o botão **Excluir**. A exclusão é definitiva somente quando a conta não possui registros vinculados. O sistema verifica solicitações, retrabalhos, arquivos, pagamentos, histórico e vínculo como calculista.
+
+Quando houver qualquer vínculo, a exclusão é bloqueada e a conta deve ser **desativada**. A desativação impede novos acessos sem apagar a atribuição histórica.
+
+O sistema também impede a exclusão do próprio administrador logado e do último administrador ativo.

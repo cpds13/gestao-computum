@@ -4,11 +4,11 @@ Sistema web de gestão operacional de solicitações de cálculos judiciais.
 
 O Gestão Computum **não é um motor de cálculo**. Ele controla a operação da demanda: entrada, advogado, cliente, processo, área, tipo de serviço, calculista, prazo, documentos, produção, revisão, entrega, financeiro, retrabalho e histórico.
 
-## Estado atual — V52
+## Estado atual — V53
 
-A V52 corrige a apresentação do menu e do manual do perfil Usuário. O Usuário consulta Advogados, Clientes, Processos, Calculistas e Relatórios sem permissões de edição, e recebe um manual específico de consulta e acompanhamento.
+A V53 adiciona exclusão segura de usuários pelo painel administrativo. A V52 corrige a apresentação do menu e do manual do perfil Usuário. O Usuário consulta Advogados, Clientes, Processos, Calculistas e Relatórios sem permissões de edição, e recebe um manual específico de consulta e acompanhamento.
 
-A V52 consolida a V52 e mantém o painel Gerenciar usuários, permissões, vínculo usuário↔calculista, alteração de e-mail e administração segura das contas de acesso.
+A V53 mantém o painel Gerenciar usuários, permissões, vínculo usuário↔calculista, alteração de e-mail e administração segura das contas de acesso.
 
 ### Arquitetura
 
@@ -267,3 +267,15 @@ O Google Drive deve permanecer privado/restrito.
 
 ### Permissão do perfil Usuário — V52
 O perfil Usuário pode consultar os painéis de Advogados, Clientes, Processos, Calculistas e Relatórios. Esses painéis são somente leitura para esse perfil: criação, edição, exclusão e vínculo administrativo permanecem restritos ao Administrador.
+
+
+### Exclusão segura de usuários — V53
+
+O Administrador pode excluir uma conta pelo painel **Usuários**. Antes da exclusão, a Edge Function verifica se a conta possui referências em solicitações, retrabalhos, arquivos, pagamentos, histórico ou cadastro de calculista.
+
+- Sem vínculos: remove a conta do Supabase Auth, o registro em `public.usuarios` e o cadastro de calculista vinculado, quando existir.
+- Com vínculos: a exclusão é bloqueada e o usuário deve ser desativado para preservar o histórico.
+- O próprio administrador logado não pode excluir a própria conta.
+- O último administrador ativo não pode ser excluído.
+
+A migration `011_exclusao_segura_usuarios.sql` deve ser executada no Supabase antes de usar a exclusão.
