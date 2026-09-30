@@ -967,15 +967,24 @@ let renderEmAndamento = false;
 let renderPendente = false;
 let queryRenderTimer = null;
 
+function fecharSidebarMobile() {
+  if (window.innerWidth >= 801) return;
+  const sidebar = $('#sidebar');
+  if (!sidebar) return;
+
+  // Fecha de forma explícita para que a barra não permaneça visível
+  // quando a navegação mantém a mesma view (ex.: Dashboard).
+  sidebar.classList.remove('open');
+  sidebar.setAttribute('aria-hidden', 'true');
+  sidebar.style.transform = 'translateX(-100%)';
+}
+
 function nav(view) {
   if (!view || !views[view]) view = 'dashboard';
 
-  // Em dispositivos móveis, qualquer toque em um item de navegação fecha
-  // a barra lateral, inclusive quando o usuário já está na mesma tela.
-  if (window.innerWidth < 801) {
-    const sidebar = $('#sidebar');
-    if (sidebar) sidebar.classList.remove('open');
-  }
+  // Em dispositivos móveis, qualquer navegação fecha a barra lateral,
+  // inclusive quando o usuário toca novamente na view atual.
+  fecharSidebarMobile();
 
   if (isAdministrador()) {
     // administrador pode acessar todas as áreas
@@ -5791,19 +5800,23 @@ async function sairDoSistema() {
   mostrarLogin();
 }
 
-// No mobile, o fechamento da barra lateral acontece no início do toque em
-// qualquer item de navegação. Isso evita que itens que permaneçam na mesma
-// view (ex.: Dashboard) ou que tenham renderização dinâmica mantenham a
-// barra azul aberta. O listener em captura roda antes dos handlers internos.
+// No mobile, o fechamento da barra lateral acontece no primeiro evento de
+// interação com qualquer item de navegação. pointerdown/touchstart são usados
+// além do click para evitar que a renderização ou o ciclo de toque do navegador
+// reabra/mantenha a barra visível, inclusive em Dashboard e Solicitações.
 if (!document.documentElement.dataset.mobileNavCloseReady) {
   document.documentElement.dataset.mobileNavCloseReady = 'true';
-  document.addEventListener('click', event => {
+
+  const fecharAoInteragirComMenu = event => {
     if (window.innerWidth >= 801) return;
     const button = event.target.closest('.nav-item[data-view]');
     if (!button) return;
-    const sidebar = $('#sidebar');
-    if (sidebar) sidebar.classList.remove('open');
-  }, true);
+    fecharSidebarMobile();
+  };
+
+  document.addEventListener('pointerdown', fecharAoInteragirComMenu, true);
+  document.addEventListener('touchstart', fecharAoInteragirComMenu, { capture: true, passive: true });
+  document.addEventListener('click', fecharAoInteragirComMenu, true);
 }
 
 function initEventDelegation() {
@@ -6144,10 +6157,19 @@ function kanban() {
 
 $('#menuBtn').addEventListener(
   'click',
-  () =>
-    $('#sidebar').classList.toggle(
-      'open'
-    )
+  () => {
+    const sidebar = $('#sidebar');
+    if (!sidebar) return;
+
+    const abrindo = !sidebar.classList.contains('open');
+    sidebar.classList.toggle('open', abrindo);
+    sidebar.setAttribute('aria-hidden', abrindo ? 'false' : 'true');
+    if (abrindo) {
+      sidebar.style.transform = '';
+    } else {
+      sidebar.style.transform = 'translateX(-100%)';
+    }
+  }
 );
 
 initEventDelegation();

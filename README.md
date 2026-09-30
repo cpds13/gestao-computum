@@ -4,14 +4,14 @@ Sistema web de gestão operacional de solicitações de cálculos judiciais.
 
 O Gestão Computum **não é um motor de cálculo**. Ele controla a operação da demanda: entrada, advogado, cliente, processo, área, tipo de serviço, calculista, prazo, documentos, produção, revisão, entrega, financeiro, retrabalho e histórico.
 
-## Estado atual — V56
+## Estado atual — V57
 
 A V54 consolida a identificação de calculistas por vínculo explícito de ID e elimina cadastros órfãos das listas operacionais. A V53 adiciona exclusão segura de usuários pelo painel administrativo. A V52 corrige a apresentação do menu e do manual do perfil Usuário. O Usuário consulta Advogados, Clientes, Processos, Calculistas e Relatórios sem permissões de edição, e recebe um manual específico de consulta e acompanhamento.
 
 A V53 mantém o painel Gerenciar usuários, permissões, vínculo usuário↔calculista, alteração de e-mail e administração segura das contas de acesso.
 
 
-A V56 corrige a navegação do menu lateral em dispositivos móveis: ao tocar em qualquer item do menu, inclusive no Dashboard quando ele já está aberto, a barra lateral é fechada antes da permanência ou troca de tela. A correção não altera a navegação desktop nem as permissões.
+A V57 reforça a navegação do menu lateral em dispositivos móveis: ao tocar em qualquer item do menu, inclusive no Dashboard e em Solicitações quando a tela já está aberta, a barra lateral é recolhida de forma explícita antes da permanência ou troca de tela. A correção usa eventos de interação antecipados e fechamento visual forçado no mobile, sem alterar a navegação desktop nem as permissões.
 
 ### Arquitetura
 
