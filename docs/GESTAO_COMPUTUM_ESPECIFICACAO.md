@@ -1016,7 +1016,7 @@ Evita duplicação de informação.
 
 # 20. Gestão de usuários e permissões
 
-A V45.2 implementa o gerenciamento administrativo das contas de acesso. A conta autenticada em `auth.users` permanece a identidade principal. O registro em `public.usuarios` guarda nome, e-mail, situação e perfil administrativo. A função de Calculista é representada pelo vínculo `public.calculistas.usuario_id`.
+A V46 implementa o gerenciamento administrativo das contas de acesso. A conta autenticada em `auth.users` permanece a identidade principal. O registro em `public.usuarios` guarda nome, e-mail, situação e perfil administrativo. A função de Calculista é representada pelo vínculo `public.calculistas.usuario_id`.
 
 O mesmo usuário pode exercer Administrador e Calculista simultaneamente. A administração de contas ocorre pelo painel do sistema e não deve exigir edição manual de `auth.users`.
 

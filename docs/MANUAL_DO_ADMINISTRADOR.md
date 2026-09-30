@@ -1,6 +1,6 @@
 # Manual do Administrador — Gestão Computum
 
-**Versão:** V45.2  
+**Versão:** V46  
 **Data:** 29/09/2026  
 **Status:** Em desenvolvimento
 
@@ -164,15 +164,11 @@ Se `carlos.patrick@hotmail.com` já existir no Supabase Auth:
 
 Não crie uma segunda conta para o mesmo e-mail.
 
-## 4. Implantação técnica da V45.2
+## 4. Implantação técnica da V46
 
 ### 4.1 Migration
 
-No Supabase, abra **SQL Editor**, cole o conteúdo de:
-
-`supabase/migrations/008_gestao_usuarios.sql`
-
-e execute uma vez.
+As migrations 008 e 009 já fazem parte da base consolidada da V45.2. **Não execute novamente migrations já aplicadas.** A V46 não acrescenta uma migration obrigatória para o gerenciamento de usuários.
 
 Essa migration:
 
@@ -188,11 +184,9 @@ Publique:
 
 `supabase/functions/gerenciar-usuario/index.ts`
 
-Com Supabase CLI:
+No Supabase Web, abra **Edge Functions → gerenciar-usuario → Code**, substitua o código pelo arquivo `supabase/functions/gerenciar-usuario/index.ts` e clique em **Deploy**.
 
-```bash
-supabase functions deploy gerenciar-usuario
-```
+A V46 não exige uma nova migration para esta correção; as migrations 008 e 009 já executadas permanecem válidas.
 
 A Edge Function usa `SUPABASE_SERVICE_ROLE_KEY` somente no ambiente seguro do Supabase. **Nunca coloque essa chave no frontend.**
 

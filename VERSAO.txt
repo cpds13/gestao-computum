@@ -1,0 +1,6 @@
+GESTÃO COMPUTUM — V47
+
+Versão oficial consolidada.
+Base: V45.
+Correção principal: autenticação segura da Edge Function gerenciar-usuario e chamada administrativa com access token explícito.
+Não executar novamente as migrations 008 e 009 se elas já estiverem aplicadas.

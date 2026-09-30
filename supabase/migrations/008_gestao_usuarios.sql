@@ -1,4 +1,4 @@
--- Gestão Computum — V45.1
+-- Gestão Computum — V46 (migração histórica, já aplicada)
 -- Gestão administrativa de usuários, perfis e vínculo com calculistas.
 
 alter table public.usuarios

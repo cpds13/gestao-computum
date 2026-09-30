@@ -676,7 +676,7 @@ Desativar um usuário deve impedir novo acesso sem apagar seu histórico ou suas
 
 ### 15.5 Painel Gerenciar usuários
 
-A partir da V45.2, o administrador deve utilizar o menu **Usuários** do Gestão Computum para administrar as contas. O objetivo é retirar do fluxo cotidiano a necessidade de editar manualmente `auth.users` e `public.usuarios` no Supabase.
+A partir da V46, o administrador deve utilizar o menu **Usuários** do Gestão Computum para administrar as contas. O objetivo é retirar do fluxo cotidiano a necessidade de editar manualmente `auth.users` e `public.usuarios` no Supabase.
 
 Na lista de usuários, o administrador visualiza:
 
@@ -797,7 +797,7 @@ A finalidade das cores é permitir leitura rápida da situação sem substituir 
 | 0.5 | 29/09/2026 | Reestruturação do manual interno em capítulos/abas; inclusão de busca; documentação detalhada do fluxo de revisão e devolução; requisitos da futura Gestão de Usuários; regras de cores dos status e ajuda contextual. |
 | 0.8 | 29/09/2026 | Atualização para o estado funcional da V42: Tipo de Serviço/Outro, tipos Tributário, entrega e aguardando pagamento, recebimentos parciais e múltiplos, documentação Forms + Apps Script + Drive, pasta 05 - Financeiro e contagem real de retrabalhos no Dashboard. |
 | 0.9 | 29/09/2026 | V45: ampliação dos Tipos de Serviço de Servidor Público e Saúde, cópia rápida do código das solicitações e Histórico financeiro separado de Contas a receber. |
-| 0.10 | 29/09/2026 | V45.2: implementação do painel Gerenciar usuários, criação/edição de contas, permissões Administrador e Calculista, vínculo usuário↔calculista, alteração de e-mail, ativação/desativação e sincronização de contas existentes no Supabase Auth. |
+| 0.10 | 29/09/2026 | V46: implementação do painel Gerenciar usuários, criação/edição de contas, permissões Administrador e Calculista, vínculo usuário↔calculista, alteração de e-mail, ativação/desativação e sincronização de contas existentes no Supabase Auth. |
 
 
 ### Devolução para ajuste

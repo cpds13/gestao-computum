@@ -1,4 +1,4 @@
-/* Gestão Computum — V39 — recebimentos parciais e múltiplos recebimentos.
+/* Gestão Computum — V47 — gestão de usuários e autenticação administrativa.
    primeira versão de frontend.
    O armazenamento local abaixo é apenas modo protótipo.
    Em produção, substituir a camada store por Supabase e o upload por Google Drive.
@@ -12,12 +12,6 @@ const CONFIG = {
   googleFormUrl: 'https://docs.google.com/forms/d/e/1FAIpQLSes_cqGBuoBI8rjiW2q5kkC0M9hrs5rrqpPijeEHQHmZ8dTXA/viewform?usp=pp_url',
   productionReady: false
 };
-
-// Mesmos dados públicos usados pelo supabase-client.js.
-// São chaves próprias para uso no navegador; nunca usar service_role aqui.
-const SUPABASE_URL_GLOBAL = 'https://gldaegbculoucdjluyek.supabase.co';
-const SUPABASE_PUBLISHABLE_KEY_GLOBAL = 'sb_publishable_zlfMjJXpIVvLAwaG2ZkGjQ_A-ha4qRZ';
-
 /* =========================================================
    AUTENTICAÇÃO — SUPABASE
    ========================================================= */
@@ -179,7 +173,7 @@ function statusClassCalculista(r) {
 function atualizarUsuarioInterface() {
   if (!currentProfile) return;
 
-  const nome = currentProfile.nome || 'Usuário';
+  const nome = nomeExibicaoUsuario(currentProfile);
 
   const perfil = rotuloPerfilUsuario(currentProfile);
 
@@ -2031,7 +2025,7 @@ async function abrirUsuarioModal(usuario = null) {
           <div class="modal-body">
             ${editando ? `<input type="hidden" name="user_id" value="${escapeHtml(usuario.id)}">` : ''}
             <div class="form-grid">
-              <div class="field full"><label for="userName">Nome *</label><input class="input" id="userName" name="nome" required value="${escapeHtml(usuario?.nome || '')}" placeholder="Nome completo"></div>
+              <div class="field full"><label for="userName">Nome *</label><input class="input" id="userName" name="nome" required value="${escapeHtml(nomeExibicaoUsuario(usuario))}" placeholder="Nome completo"></div>
               <div class="field full"><label for="userEmail">E-mail *</label><input class="input" id="userEmail" name="email" type="email" required value="${escapeHtml(usuario?.email || '')}" placeholder="nome@dominio.com.br"></div>
               ${!editando ? `<div class="field full"><label for="userPassword">Senha inicial *</label><input class="input" id="userPassword" name="password" type="password" minlength="8" required placeholder="Mínimo de 8 caracteres"><small class="muted">A senha é usada somente na criação da conta e não fica registrada no Gestão Computum.</small></div>` : ''}
             </div>
@@ -2059,6 +2053,92 @@ async function abrirUsuarioModal(usuario = null) {
   $('#userForm').addEventListener('submit', salvarUsuarioModal);
 }
 
+async function obterAccessTokenGerenciamento() {
+  let { data, error } = await supabaseClient.auth.getSession();
+
+  if (error) {
+    console.error('Erro ao recuperar sessão para gerenciamento:', error);
+    throw new Error('Não foi possível recuperar a sessão atual.');
+  }
+
+  let session = data?.session || null;
+
+  // Se a sessão local estiver ausente/expirada, tenta renová-la antes da chamada.
+  if (!session?.access_token) {
+    const refresh = await supabaseClient.auth.refreshSession();
+    if (!refresh.error) session = refresh.data?.session || null;
+  }
+
+  if (!session?.access_token) {
+    throw new Error('Sessão inválida. Faça login novamente.');
+  }
+
+  return session.access_token;
+}
+
+async function chamarGerenciarUsuario(payload) {
+  const url = `${SUPABASE_URL}/functions/v1/gerenciar-usuario`;
+
+  let token = await obterAccessTokenGerenciamento();
+
+  async function executar(accessToken) {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_PUBLISHABLE_KEY,
+        'Authorization': `Bearer ${accessToken}`
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const texto = await response.text();
+    let data = {};
+    try {
+      data = texto ? JSON.parse(texto) : {};
+    } catch (_) {
+      data = { error: texto || 'Resposta inválida da Edge Function.' };
+    }
+
+    return { response, data };
+  }
+
+  let resultado = await executar(token);
+
+  // Um access token pode expirar entre getSession() e o fetch().
+  // Renova uma única vez e repete somente em 401.
+  if (resultado.response.status === 401) {
+    const refresh = await supabaseClient.auth.refreshSession();
+    if (refresh.error || !refresh.data?.session?.access_token) {
+      throw new Error(resultado.data?.error || 'Sessão expirada. Faça login novamente.');
+    }
+    token = refresh.data.session.access_token;
+    resultado = await executar(token);
+  }
+
+  if (!resultado.response.ok) {
+    const mensagem = resultado.data?.error || resultado.data?.message || `Erro HTTP ${resultado.response.status}.`;
+    throw new Error(mensagem);
+  }
+
+  return resultado.data;
+}
+
+function nomeExibicaoUsuario(usuario) {
+  const nome = String(usuario?.nome || '').trim();
+  const email = String(usuario?.email || '').trim();
+
+  if (nome && nome.toLowerCase() !== email.toLowerCase()) return nome;
+
+  const local = email.split('@')[0] || '';
+  return local
+    .replace(/[._-]+/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(parte => parte.charAt(0).toUpperCase() + parte.slice(1).toLowerCase())
+    .join(' ') || nome || 'Usuário';
+}
+
 async function salvarUsuarioModal(event) {
   event.preventDefault();
   const form = event.target;
@@ -2075,55 +2155,9 @@ async function salvarUsuarioModal(event) {
   // Sem função específica, a conta permanece como Usuário.
   button.disabled = true; button.textContent = userId ? 'Salvando…' : 'Criando…';
   try {
-    // Obtém explicitamente a sessão atual para garantir que a Edge Function
-    // receba o access token da conta autenticada neste navegador.
-    const { data: sessionData, error: sessionError } =
-      await supabaseClient.auth.getSession();
-
-    if (sessionError) {
-      throw new Error('Não foi possível validar a sessão atual.');
-    }
-
-    const accessToken = sessionData?.session?.access_token;
-
-    if (!accessToken) {
-      throw new Error('Sua sessão expirou. Faça login novamente.');
-    }
-
-    // Usamos fetch diretamente para garantir que o Authorization enviado
-    // ao gateway da Edge Function seja exatamente o access token da sessão.
-    // Isso evita ambiguidades do helper functions.invoke quando há múltiplas
-    // instâncias/clientes ou uma sessão renovada recentemente.
-    const functionUrl = `${SUPABASE_URL_GLOBAL}/functions/v1/gerenciar-usuario`;
-    const response = await fetch(functionUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SUPABASE_PUBLISHABLE_KEY_GLOBAL,
-        'Authorization': `Bearer ${accessToken}`
-      },
-      body: JSON.stringify(payload)
-    });
-
-    const responseText = await response.text();
-    let data = null;
-    try {
-      data = responseText ? JSON.parse(responseText) : null;
-    } catch {
-      data = null;
-    }
-
-    if (!response.ok) {
-      const detalhe = data?.error || responseText || `Erro HTTP ${response.status}`;
-      throw new Error(detalhe);
-    }
-
+    const data = await chamarGerenciarUsuario(payload);
     if (data?.error) throw new Error(data.error);
-
-    closeModal();
-    await carregarSolicitacoes();
-    atualizarUsuarioInterface();
-    render();
+    closeModal(); await carregarSolicitacoes(); atualizarUsuarioInterface(); render();
     showToast(userId ? 'Usuário atualizado.' : 'Usuário criado com sucesso.');
   } catch (error) {
     console.error('Erro ao gerenciar usuário:', error); showToast(error.message || 'Não foi possível salvar o usuário.');

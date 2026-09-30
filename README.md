@@ -4,9 +4,9 @@ Sistema web de gestão operacional de solicitações de cálculos judiciais.
 
 O Gestão Computum **não é um motor de cálculo**. Ele controla a operação da demanda: entrada, advogado, cliente, processo, área, tipo de serviço, calculista, prazo, documentos, produção, revisão, entrega, financeiro, retrabalho e histórico.
 
-## Estado atual — V45.2
+## Estado atual — V47
 
-A V45.2 consolida a V45 e acrescenta o painel Gerenciar usuários, permissões, vínculo usuário↔calculista, alteração de e-mail e administração segura das contas de acesso.
+A V47 consolida a V45 e acrescenta o painel Gerenciar usuários, permissões, vínculo usuário↔calculista, alteração de e-mail e administração segura das contas de acesso.
 
 ### Arquitetura
 
@@ -161,7 +161,7 @@ Não há dependência de Google Cloud ou cartão para o fluxo Forms + Apps Scrip
 
 ## Gestão de usuários
 
-A V45.2 inclui o painel administrativo **Gerenciar usuários**. Ele permite criar e editar contas, alterar e-mail, definir Administrador, Calculista ou as duas funções, vincular um cadastro de calculista e ativar/desativar usuários.
+A V47 inclui o painel administrativo **Gerenciar usuários**. Ele permite criar e editar contas, alterar e-mail, definir Administrador, Calculista ou as duas funções, vincular um cadastro de calculista e ativar/desativar usuários.
 
 Contas que já existiam no Supabase Auth são sincronizadas pela migration `008_gestao_usuarios.sql`. A criação e alteração da conta de autenticação usam a Edge Function `gerenciar-usuario`; a `service_role` fica exclusivamente no ambiente seguro do Supabase e nunca no frontend.
 
@@ -212,7 +212,7 @@ O Google Drive deve permanecer privado/restrito.
 ### V45
 - Tipos de Serviço, cópia rápida de código e histórico financeiro.
 
-### V45.2
+### V47
 - Painel Gerenciar usuários.
 - Criação e edição de contas.
 - Funções Administrador, Calculista e Administrador + Calculista.
@@ -220,6 +220,8 @@ O Google Drive deve permanecer privado/restrito.
 - Ativação/desativação.
 - Sincronização de contas já existentes no Supabase Auth.
 - Edge Function segura para operações administrativas de autenticação.
+- Validação do access token diretamente pelo endpoint Auth do Supabase, sem depender de sessão interna do cliente supabase-js na Edge Function.
+- Chamada administrativa do frontend com access token explícito, renovação de sessão e tratamento de HTTP 401/403/400/500.
 
 - Ampliação dos Tipos de Serviço de Servidor Público e Saúde.
 - `Outro` continua com detalhamento de até 100 caracteres.

@@ -1,4 +1,4 @@
--- Gestão Computum — V45.2
+-- Gestão Computum — V46 (migração histórica, já aplicada)
 -- Permissões do perfil Usuário (antigo administrativo) e proteção operacional.
 -- Usuário pode criar/visualizar solicitações e atribuí-las a calculistas,
 -- mas não pode editar/excluir solicitações ou executar rotinas administrativas.
