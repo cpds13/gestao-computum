@@ -1986,6 +1986,10 @@ O detalhamento operacional está em `docs/GOOGLE_DRIVE_FORMS.md`.
 - Financeiro separado em `Contas a receber` e `Histórico financeiro` para solicitações concluídas.
 
 
-## Regra consolidada — V50
+## Regra consolidada — V51
 
 A função Calculista não é inferida pelo nome. O sistema reconhece a função apenas pelo perfil `calculista` ou por vínculo explícito em `public.calculistas.usuario_id`. Cadastros de calculistas sem vínculo permanecem como registros operacionais/históricos e não concedem acesso ao painel de produção.
+
+
+### Permissão do perfil Usuário — V51
+O perfil Usuário pode consultar os painéis de Advogados, Clientes, Processos, Calculistas e Relatórios. Esses painéis são somente leitura para esse perfil: criação, edição, exclusão e vínculo administrativo permanecem restritos ao Administrador.

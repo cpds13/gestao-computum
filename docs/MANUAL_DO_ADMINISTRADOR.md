@@ -209,3 +209,7 @@ Após a implantação, testar:
 ## 5. Regra de manutenção da documentação
 
 Toda alteração futura de usuários, permissões, autenticação ou vínculo com calculistas deve ser documentada neste manual e no `docs/MANUAL_DO_SISTEMA.md`.
+
+
+### Permissão do perfil Usuário — V51
+O perfil Usuário pode consultar os painéis de Advogados, Clientes, Processos, Calculistas e Relatórios. Esses painéis são somente leitura para esse perfil: criação, edição, exclusão e vínculo administrativo permanecem restritos ao Administrador.

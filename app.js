@@ -76,6 +76,12 @@ function podeAtribuirSolicitacao() {
 
 function rotuloPerfilUsuario(usuario = currentProfile) {
   if (!usuario) return 'Usuário';
+
+  // O perfil administrativo é uma função própria. Um cadastro antigo de
+  // calculista ou um vínculo residual não pode transformar um Usuário em
+  // Calculista. As funções acumuláveis são Administrador + Calculista.
+  if (usuario.perfil === 'administrativo') return 'Usuário';
+
   const calcVinculado = db.calculistas?.some(c => c.usuario_id === usuario.id);
   const admin = usuario.perfil === 'administrador';
   const calc = usuario.perfil === 'calculista' || calcVinculado;
@@ -114,6 +120,9 @@ function calculistaAtual() {
 // explícito com um cadastro de calculista são as únicas formas de reconhecer
 // a função. Um cadastro antigo sem usuario_id não concede acesso.
 function isCalculista() {
+  // Usuário (perfil administrativo) não pode herdar a função Calculista
+  // por vínculo residual ou cadastro antigo.
+  if (isUsuario()) return false;
   return currentProfile?.perfil === 'calculista' || !!calculistaAtual();
 }
 
@@ -198,6 +207,8 @@ function atualizarUsuarioInterface() {
   const calc = isCalculista();
   const admin = isAdministrador();
 
+  // Usuário tem acesso de consulta aos painéis operacionais, sem ações de edição.
+  // Os próprios handlers de edição continuam protegidos por isAdministrador().
   const driveGestaoButton = document.getElementById('driveGestaoButton');
   if (driveGestaoButton) {
     driveGestaoButton.style.display = admin ? '' : 'none';
@@ -209,10 +220,19 @@ function atualizarUsuarioInterface() {
 
     if (admin) {
       visible = true;
+    } else if (isUsuario()) {
+      visible = [
+        'dashboard',
+        'solicitacoes',
+        'advogados',
+        'clientes',
+        'processos',
+        'calculistas',
+        'relatorios',
+        'manual'
+      ].includes(view);
     } else if (calc) {
       visible = ['producao', 'manual'].includes(view);
-    } else if (isUsuario()) {
-      visible = ['dashboard', 'solicitacoes', 'manual'].includes(view);
     } else {
       visible = ['manual'].includes(view);
     }
@@ -935,10 +955,10 @@ function nav(view) {
 
   if (isAdministrador()) {
     // administrador pode acessar todas as áreas
+  } else if (isUsuario()) {
+    if (!['dashboard', 'solicitacoes', 'advogados', 'clientes', 'processos', 'calculistas', 'relatorios', 'manual'].includes(view)) view = 'dashboard';
   } else if (isCalculista()) {
     if (!['producao', 'manual'].includes(view)) view = 'producao';
-  } else if (isUsuario()) {
-    if (!['dashboard', 'solicitacoes', 'manual'].includes(view)) view = 'dashboard';
   } else {
     view = 'manual';
   }
@@ -976,10 +996,10 @@ function render() {
   renderEmAndamento = true;
 
   try {
-    if (!isAdministrador() && isCalculista() && !['producao', 'manual'].includes(state.view)) {
-      state.view = 'producao';
-    } else if (!isAdministrador() && isUsuario() && !['dashboard', 'solicitacoes', 'manual'].includes(state.view)) {
+    if (!isAdministrador() && isUsuario() && !['dashboard', 'solicitacoes', 'advogados', 'clientes', 'processos', 'calculistas', 'relatorios', 'manual'].includes(state.view)) {
       state.view = 'dashboard';
+    } else if (!isAdministrador() && !isUsuario() && isCalculista() && !['producao', 'manual'].includes(state.view)) {
+      state.view = 'producao';
     } else if (!isAdministrador() && !isCalculista() && !isUsuario()) {
       state.view = 'manual';
     }
@@ -1791,6 +1811,7 @@ function openCalculistaDetail(id) {
 
 function manualView() {
   const admin = isAdministrador();
+  const usuario = isUsuario();
   const calculista = isCalculista();
   const ambos = admin && calculista;
 
@@ -1798,6 +1819,9 @@ function manualView() {
     ['visao', 'Visão geral', true],
     ['operacao', 'Operação', admin],
     ['producao', 'Minha produção', calculista],
+    ['solicitacoes_usuario', 'Solicitações', usuario],
+    ['cadastros_usuario', 'Cadastros', usuario],
+    ['relatorios_usuario', 'Relatórios', usuario],
     ['fluxo', 'Fluxo de trabalho', true],
     ['revisao', 'Revisão', admin || calculista],
     ['usuarios', 'Usuários', admin],
@@ -1841,6 +1865,34 @@ function manualView() {
         ['Enviar para revisão', 'Quando a produção estiver pronta, utilize Enviar para revisão. A solicitação passa para Em revisão e o histórico registra que o calculista concluiu a etapa técnica.'],
         ['Receber uma devolução', 'Quando o revisor devolver a solicitação, a produção permanece em EM CÁLCULO, mas é identificada visualmente como Devolvido. O motivo aparece em um bloco próprio no detalhe da produção, com a data do retorno. O calculista deve corrigir o trabalho e enviá-lo novamente para revisão.'],
         ['O que o calculista não encerra', 'O calculista não marca a solicitação como Concluído. Entrega, pagamento e encerramento financeiro são etapas administrativas.']
+      ]
+    },
+    solicitacoes_usuario: {
+      title: 'Solicitações',
+      intro: 'Consulta e acompanhamento das solicitações, com possibilidade de registrar novas demandas e atribuir novas solicitações, sem editar ou excluir registros existentes.',
+      articles: [
+        ['Consultar solicitações', 'O Usuário pode consultar as solicitações, acompanhar seus status, responsáveis, prazos, documentos, valores e histórico.'],
+        ['Criar solicitação', 'O Usuário pode registrar uma nova solicitação com os dados disponíveis no formulário.'],
+        ['Atribuir uma nova solicitação', 'Quando permitido pelo fluxo da tela, o Usuário pode atribuir uma nova solicitação a um calculista. Essa permissão não inclui alterar a atribuição de uma solicitação já existente.'],
+        ['O que o Usuário não pode fazer', 'O Usuário não pode editar ou excluir solicitações existentes, revisar cálculos, aprovar ou devolver cálculos, registrar pagamentos ou administrar usuários.']
+      ]
+    },
+    cadastros_usuario: {
+      title: 'Cadastros para consulta',
+      intro: 'Os painéis de Advogados, Clientes, Processos e Calculistas ficam disponíveis para consulta.',
+      articles: [
+        ['Advogados', 'Consulte os advogados cadastrados e as informações relacionadas. O Usuário não pode criar, editar ou excluir registros.'],
+        ['Clientes', 'Consulte os clientes e seus dados relacionados às solicitações. O Usuário não pode alterar os cadastros.'],
+        ['Processos', 'Consulte processos e suas relações com as solicitações. O Usuário não pode criar, editar ou excluir processos.'],
+        ['Calculistas', 'Consulte os calculistas disponíveis e suas informações. O Usuário não pode editar cadastros, vincular usuários ou alterar a situação dos calculistas.']
+      ]
+    },
+    relatorios_usuario: {
+      title: 'Relatórios',
+      intro: 'Relatórios são disponibilizados ao Usuário para acompanhamento da operação, sem alteração dos registros.',
+      articles: [
+        ['Consulta', 'O Usuário pode consultar os relatórios disponíveis para acompanhar volume, prazos, situação e demais informações liberadas pelo sistema.'],
+        ['Somente leitura', 'A consulta de relatórios não concede permissão para editar, excluir ou alterar os dados que originam os relatórios.']
       ]
     },
     fluxo: {
@@ -1936,12 +1988,20 @@ function manualView() {
   const active = sections[state.manualTab] || sections.visao;
   const matches = active.articles.filter(([title, body]) => !query || `${title} ${body}`.toLowerCase().includes(query));
 
-  const roleTitle = ambos ? 'Manual do Administrador e Calculista' : admin ? 'Manual do Administrador' : 'Manual do Calculista';
+  const roleTitle = ambos
+    ? 'Manual do Administrador e Calculista'
+    : admin
+      ? 'Manual do Administrador'
+      : usuario
+        ? 'Manual do Usuário'
+        : 'Manual do Calculista';
   const roleIntro = ambos
     ? 'Documentação funcional e operacional para quem administra o ciclo das solicitações e também executa cálculos.'
     : admin
       ? 'Documentação funcional e operacional das rotinas administrativas do Gestão Computum.'
-      : 'Documentação funcional e operacional das rotinas de produção atribuídas ao calculista.';
+      : usuario
+        ? 'Documentação para consulta e acompanhamento das solicitações, cadastros e relatórios, sem permissões de edição.'
+        : 'Documentação funcional e operacional das rotinas de produção atribuídas ao calculista.';
 
   return `
     <div class="manual-page-head">
@@ -2835,9 +2895,11 @@ const views = {
                           : `<span class="status aguardando">Sem acesso</span><small>Crie o usuário no Supabase para liberar o login.</small>`;
                       })()}
                     </div>
-                    <div class="actions" style="margin-top:12px">
-                      <button class="btn btn-secondary" type="button" data-link-calculista="${calc?.id || ''}">Vincular usuário</button>
-                    </div>
+                    ${isAdministrador() ? `
+                      <div class="actions" style="margin-top:12px">
+                        <button class="btn btn-secondary" type="button" data-link-calculista="${calc?.id || ''}">Vincular usuário</button>
+                      </div>
+                    ` : ''}
 
                     <div class="mini-stats">
 

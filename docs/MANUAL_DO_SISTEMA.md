@@ -838,3 +838,12 @@ Após a aprovação do cálculo pelo administrador, a solicitação permanece em
 - **Outro:** permanece como opção especial e abre campo de detalhamento de até 100 caracteres.
 - **Código da solicitação:** o ícone discreto `⧉` permite copiar o código diretamente nas tabelas.
 - **Financeiro:** `Contas a receber` continua mostrando somente saldos em aberto; abaixo dela, `Histórico financeiro` mostra as solicitações concluídas financeiramente.
+
+
+### Permissão do perfil Usuário — V51
+O perfil Usuário pode consultar os painéis de Advogados, Clientes, Processos, Calculistas e Relatórios. Esses painéis são somente leitura para esse perfil: criação, edição, exclusão e vínculo administrativo permanecem restritos ao Administrador.
+
+
+## Perfil Usuário
+
+O perfil Usuário possui acesso de consulta aos painéis de Advogados, Clientes, Processos, Calculistas e Relatórios, além de Dashboard e Solicitações. Pode registrar novas solicitações e, quando permitido pelo fluxo, atribuir novas solicitações a calculistas. Não pode editar ou excluir registros existentes, revisar cálculos, operar o financeiro ou gerenciar usuários. O manual exibido dentro do sistema é o Manual do Usuário quando essa função estiver ativa.
