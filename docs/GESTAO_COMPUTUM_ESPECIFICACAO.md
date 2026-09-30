@@ -1984,3 +1984,8 @@ O detalhamento operacional está em `docs/GOOGLE_DRIVE_FORMS.md`.
 - `Outro` continua sendo opção especial com detalhamento de até 100 caracteres.
 - Código das solicitações pode ser copiado diretamente pelas tabelas.
 - Financeiro separado em `Contas a receber` e `Histórico financeiro` para solicitações concluídas.
+
+
+## Regra consolidada — V50
+
+A função Calculista não é inferida pelo nome. O sistema reconhece a função apenas pelo perfil `calculista` ou por vínculo explícito em `public.calculistas.usuario_id`. Cadastros de calculistas sem vínculo permanecem como registros operacionais/históricos e não concedem acesso ao painel de produção.

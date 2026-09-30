@@ -1,4 +1,4 @@
-/* Gestão Computum — V49 — gestão de usuários e autenticação administrativa.
+/* Gestão Computum — V50 — gestão de usuários e autenticação administrativa.
    primeira versão de frontend.
    O armazenamento local abaixo é apenas modo protótipo.
    Em produção, substituir a camada store por Supabase e o upload por Google Drive.
@@ -99,20 +99,20 @@ function estaEmRevisao(status) {
 }
 
 function calculistaAtual() {
-  const nome = (currentProfile?.nome || '').trim().toLowerCase();
-  if (!currentUser?.id && !nome) return null;
+  if (!currentUser?.id) return null;
 
+  // A função Calculista só pode ser reconhecida por uma permissão explícita:
+  // perfil=calculista ou vínculo calculistas.usuario_id=usuário autenticado.
+  // Nunca conceder a função apenas por coincidência de nome.
   return db.calculistas.find(item =>
-    item.ativo !== false && (
-      (item.usuario_id && item.usuario_id === currentUser?.id) ||
-      (!item.usuario_id && (item.nome || '').trim().toLowerCase() === nome)
-    )
+    item.ativo !== false &&
+    item.usuario_id === currentUser.id
   ) || null;
 }
 
-// Um usuário pode exercer mais de uma função. Nesta etapa, o vínculo com
-// o cadastro de calculista é a segunda função; assim, um administrador
-// também pode produzir cálculos sem precisar de uma segunda conta.
+// Um usuário pode exercer mais de uma função. O perfil calculista e o vínculo
+// explícito com um cadastro de calculista são as únicas formas de reconhecer
+// a função. Um cadastro antigo sem usuario_id não concede acesso.
 function isCalculista() {
   return currentProfile?.perfil === 'calculista' || !!calculistaAtual();
 }

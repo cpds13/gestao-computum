@@ -97,7 +97,7 @@ As funções não são mutuamente exclusivas. Um mesmo usuário pode ser adminis
 - executa as etapas de produção até `EM_REVISÃO`;
 - continua responsável pelas atividades administrativas permitidas ao seu perfil.
 
-A identificação é feita pelo vínculo do cadastro de calculista com o usuário autenticado. A migração V23 também realiza o vínculo inicial por nome para os cadastros existentes.
+A identificação operacional é feita pelo vínculo explícito do cadastro de calculista com o usuário autenticado. Cadastros históricos podem ter sido relacionados por nome em migrações antigas, mas **o nome isoladamente nunca concede a função Calculista**. Para acesso atual, deve existir perfil `calculista` ou vínculo em `public.calculistas.usuario_id`.
 
 ### 2.4 Vinculação de acesso
 
@@ -694,10 +694,10 @@ A ação **Editar** permite alterar o nome, o e-mail, as funções, o vínculo c
 As funções são tratadas separadamente:
 
 - **Administrador:** define acesso às rotinas administrativas;
-- **Calculista:** é representado pelo vínculo do usuário com um cadastro em `public.calculistas`;
+- **Calculista:** é reconhecido pelo perfil `calculista` ou por vínculo explícito do usuário com um cadastro em `public.calculistas.usuario_id`;
 - **Administrador + Calculista:** o mesmo usuário pode possuir as duas funções, sem necessidade de duas contas.
 
-Quando a função Calculista é marcada e não existe cadastro vinculado, o sistema pode criar ou reaproveitar um cadastro pelo nome. O administrador também pode escolher um cadastro de calculista existente.
+Quando a função Calculista é marcada e não existe cadastro vinculado, o sistema pode criar ou reaproveitar um cadastro pelo nome. O administrador também pode escolher um cadastro de calculista existente. Depois que a função é retirada, um cadastro histórico sem `usuario_id` não devolve automaticamente a permissão Calculista ao usuário.
 
 ### 15.7 Criar uma nova conta
 

@@ -69,7 +69,7 @@ As duas funções podem ser acumuladas na mesma conta. Não é necessário criar
 
 ### 2.5 Vínculo com Calculista
 
-A função Calculista é representada pelo vínculo entre o usuário autenticado e `public.calculistas.usuario_id`.
+A função Calculista é reconhecida pelo perfil `calculista` ou pelo vínculo explícito entre o usuário autenticado e `public.calculistas.usuario_id`. Um cadastro de calculista sem `usuario_id` **não concede acesso como Calculista**, mesmo que o nome seja igual ao nome do usuário.
 
 Ao marcar Calculista, o administrador pode escolher um cadastro existente. Se nenhum for escolhido, o sistema tenta reaproveitar um cadastro pelo nome ou cria um novo cadastro de calculista.
 

@@ -1,7 +1,7 @@
-GESTÃO COMPUTUM — V49
+GESTÃO COMPUTUM — V50
 
 Versão oficial consolidada.
-Base: V47.
-Correção principal: diagnóstico e validação robusta do perfil administrativo na Edge Function gerenciar-usuario.
-A Edge Function diferencia erro de banco (500), usuário sem cadastro (403), usuário inativo (403) e perfil sem permissão (403), com logs técnicos para identificação do motivo.
+Base: V49.
+Correção principal: a função Calculista não é mais inferida pelo nome do usuário. O acesso como Calculista depende exclusivamente do perfil calculista ou de vínculo explícito em public.calculistas.usuario_id.
+Cadastros históricos de calculistas sem vínculo não concedem permissão de produção.
 Não executar novamente as migrations 008 e 009 se elas já estiverem aplicadas.

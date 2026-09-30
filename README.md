@@ -4,9 +4,9 @@ Sistema web de gestão operacional de solicitações de cálculos judiciais.
 
 O Gestão Computum **não é um motor de cálculo**. Ele controla a operação da demanda: entrada, advogado, cliente, processo, área, tipo de serviço, calculista, prazo, documentos, produção, revisão, entrega, financeiro, retrabalho e histórico.
 
-## Estado atual — V49
+## Estado atual — V50
 
-A V49 consolida a V45 e acrescenta o painel Gerenciar usuários, permissões, vínculo usuário↔calculista, alteração de e-mail e administração segura das contas de acesso.
+A V50 consolida a V49 e mantém o painel Gerenciar usuários, permissões, vínculo usuário↔calculista, alteração de e-mail e administração segura das contas de acesso.
 
 ### Arquitetura
 
@@ -212,7 +212,7 @@ O Google Drive deve permanecer privado/restrito.
 ### V45
 - Tipos de Serviço, cópia rápida de código e histórico financeiro.
 
-### V49
+### V50
 - Painel Gerenciar usuários.
 - Criação e edição de contas.
 - Funções Administrador, Calculista e Administrador + Calculista.
