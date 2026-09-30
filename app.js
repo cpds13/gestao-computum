@@ -5791,6 +5791,21 @@ async function sairDoSistema() {
   mostrarLogin();
 }
 
+// No mobile, o fechamento da barra lateral acontece no início do toque em
+// qualquer item de navegação. Isso evita que itens que permaneçam na mesma
+// view (ex.: Dashboard) ou que tenham renderização dinâmica mantenham a
+// barra azul aberta. O listener em captura roda antes dos handlers internos.
+if (!document.documentElement.dataset.mobileNavCloseReady) {
+  document.documentElement.dataset.mobileNavCloseReady = 'true';
+  document.addEventListener('click', event => {
+    if (window.innerWidth >= 801) return;
+    const button = event.target.closest('.nav-item[data-view]');
+    if (!button) return;
+    const sidebar = $('#sidebar');
+    if (sidebar) sidebar.classList.remove('open');
+  }, true);
+}
+
 function initEventDelegation() {
   const profileBtn = $('#profileBtn');
   if (profileBtn && !profileBtn.dataset.eventsReady) {

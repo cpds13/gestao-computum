@@ -1,6 +1,6 @@
 # Manual do Administrador — Gestão Computum
 
-**Versão:** V55  
+**Versão:** V56  
 **Data:** 29/09/2026  
 **Status:** Em desenvolvimento
 
@@ -229,6 +229,6 @@ O sistema também impede a exclusão do próprio administrador logado e do últi
 Ao alterar o nome de um usuário que exerce a função Calculista, o cadastro de calculista vinculado ao mesmo usuário deve acompanhar o nome atual. A atribuição de solicitações usa o vínculo por ID, nunca a busca por nome. Cadastros de calculista sem usuário vinculado não aparecem nas listas operacionais.
 
 
-## V55 — Navegação mobile
+## V56 — Navegação mobile
 
 Em dispositivos móveis, tocar em qualquer item do menu lateral fecha o menu imediatamente, inclusive quando o item corresponde à tela que já está aberta. Essa regra evita que a barra lateral permaneça aberta no Dashboard. A correção é exclusivamente de navegação e não altera permissões ou regras de negócio.

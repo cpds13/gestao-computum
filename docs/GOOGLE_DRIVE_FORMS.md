@@ -107,6 +107,6 @@ Como a API automática foi retirada do escopo da V8, não haverá OAuth do Googl
 4. Avaliar automações adicionais sem expor credenciais ou tokens no frontend.
 
 
-## V55 — Navegação mobile
+## V56 — Navegação mobile
 
 Em dispositivos móveis, tocar em qualquer item do menu lateral fecha o menu imediatamente, inclusive quando o item corresponde à tela que já está aberta. Essa regra evita que a barra lateral permaneça aberta no Dashboard. A correção é exclusivamente de navegação e não altera permissões ou regras de negócio.
