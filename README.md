@@ -4,9 +4,9 @@ Sistema web de gestão operacional de solicitações de cálculos judiciais.
 
 O Gestão Computum **não é um motor de cálculo**. Ele controla a operação da demanda: entrada, advogado, cliente, processo, área, tipo de serviço, calculista, prazo, documentos, produção, revisão, entrega, financeiro, retrabalho e histórico.
 
-## Estado atual — V44
+## Estado atual — V45.2
 
-A V44 consolida as funcionalidades validadas até 29/09/2026 e inclui a ampliação dos Tipos de Serviço, cópia rápida do código e histórico financeiro de solicitações concluídas.
+A V45.2 consolida a V45 e acrescenta o painel Gerenciar usuários, permissões, vínculo usuário↔calculista, alteração de e-mail e administração segura das contas de acesso.
 
 ### Arquitetura
 
@@ -159,6 +159,12 @@ O `05 - Financeiro` é utilizado para documentos de recibo e outros documentos f
 
 Não há dependência de Google Cloud ou cartão para o fluxo Forms + Apps Script adotado.
 
+## Gestão de usuários
+
+A V45.2 inclui o painel administrativo **Gerenciar usuários**. Ele permite criar e editar contas, alterar e-mail, definir Administrador, Calculista ou as duas funções, vincular um cadastro de calculista e ativar/desativar usuários.
+
+Contas que já existiam no Supabase Auth são sincronizadas pela migration `008_gestao_usuarios.sql`. A criação e alteração da conta de autenticação usam a Edge Function `gerenciar-usuario`; a `service_role` fica exclusivamente no ambiente seguro do Supabase e nunca no frontend.
+
 ## Banco e migrations
 
 Migrations incluídas no projeto:
@@ -183,6 +189,7 @@ O Gestão permanece separado desses sistemas. A integração inicial é por vín
 ## Documentação
 
 - `docs/MANUAL_DO_SISTEMA.md` — manual operacional oficial;
+- `docs/MANUAL_DO_ADMINISTRADOR.md` — manual administrativo de usuários, permissões e manutenção de acesso;
 - `docs/GESTAO_COMPUTUM_ESPECIFICACAO.md` — especificação funcional;
 - `docs/GOOGLE_DRIVE_FORMS.md` — fluxo de documentos por Forms/Apps Script/Drive.
 
@@ -202,7 +209,18 @@ O Google Drive deve permanecer privado/restrito.
 
 ## Histórico de versões
 
-### V44
+### V45
+- Tipos de Serviço, cópia rápida de código e histórico financeiro.
+
+### V45.2
+- Painel Gerenciar usuários.
+- Criação e edição de contas.
+- Funções Administrador, Calculista e Administrador + Calculista.
+- Alteração de e-mail preservando o mesmo UUID.
+- Ativação/desativação.
+- Sincronização de contas já existentes no Supabase Auth.
+- Edge Function segura para operações administrativas de autenticação.
+
 - Ampliação dos Tipos de Serviço de Servidor Público e Saúde.
 - `Outro` continua com detalhamento de até 100 caracteres.
 - Cópia rápida do código das solicitações pelo ícone `⧉`.

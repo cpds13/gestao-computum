@@ -1,6 +1,6 @@
 # Manual do Gestão Computum
 
-**Versão:** 0.9  
+**Versão:** 0.10  
 **Data:** 29/09/2026  
 **Status:** Em desenvolvimento  
 **Fonte:** documentação funcional oficial do projeto
@@ -674,6 +674,97 @@ A operação de alteração do e-mail de autenticação deve utilizar o mecanism
 
 Desativar um usuário deve impedir novo acesso sem apagar seu histórico ou suas relações com solicitações anteriores.
 
+### 15.5 Painel Gerenciar usuários
+
+A partir da V45.2, o administrador deve utilizar o menu **Usuários** do Gestão Computum para administrar as contas. O objetivo é retirar do fluxo cotidiano a necessidade de editar manualmente `auth.users` e `public.usuarios` no Supabase.
+
+Na lista de usuários, o administrador visualiza:
+
+- nome;
+- e-mail;
+- funções;
+- cadastro de calculista vinculado;
+- situação ativa/inativa;
+- identificador do usuário.
+
+A ação **Editar** permite alterar o nome, o e-mail, as funções, o vínculo como calculista e a situação da conta.
+
+### 15.6 Funções acumuladas
+
+As funções são tratadas separadamente:
+
+- **Administrador:** define acesso às rotinas administrativas;
+- **Calculista:** é representado pelo vínculo do usuário com um cadastro em `public.calculistas`;
+- **Administrador + Calculista:** o mesmo usuário pode possuir as duas funções, sem necessidade de duas contas.
+
+Quando a função Calculista é marcada e não existe cadastro vinculado, o sistema pode criar ou reaproveitar um cadastro pelo nome. O administrador também pode escolher um cadastro de calculista existente.
+
+### 15.7 Criar uma nova conta
+
+Use **Usuários → Adicionar usuário**.
+
+Informe:
+
+1. nome;
+2. e-mail;
+3. senha inicial com pelo menos 8 caracteres;
+4. uma ou ambas as funções;
+5. cadastro de calculista, quando aplicável;
+6. situação da conta.
+
+A criação é executada pela rotina administrativa segura do Supabase. A senha inicial é utilizada somente para criar a conta e não é armazenada pelo Gestão Computum.
+
+### 15.8 Alterar o e-mail
+
+Abra **Usuários → Editar**. Altere o e-mail e salve.
+
+A operação mantém o mesmo identificador da conta. Devem permanecer preservados:
+
+- permissões;
+- vínculo como calculista;
+- solicitações atribuídas ou relacionadas;
+- histórico;
+- demais referências ao usuário.
+
+Não se deve excluir a conta para trocar o e-mail.
+
+### 15.9 Usuário já existente no Supabase Auth
+
+Contas criadas anteriormente diretamente no Supabase Auth podem existir sem um registro correspondente em `public.usuarios`. A migration **008_gestao_usuarios.sql** sincroniza essas contas e cria um perfil inicial `administrativo`.
+
+Depois da sincronização, o administrador entra em **Usuários**, localiza a pessoa e define as funções adequadas.
+
+Exemplo: se `carlos.patrick@hotmail.com` já estiver em `auth.users`, não deve ser criada uma segunda conta. O registro existente deve ser configurado pelo painel e receber **Administrador**, **Calculista** ou as duas funções.
+
+### 15.10 Implantação técnica do módulo
+
+A implantação desta etapa exige duas ações no projeto Supabase:
+
+1. executar `supabase/migrations/008_gestao_usuarios.sql` no SQL Editor;
+2. publicar a Edge Function `supabase/functions/gerenciar-usuario`.
+
+A Edge Function utiliza a `service_role` somente no ambiente seguro do Supabase. Essa chave **não pode** ser colocada no `app.js`, `supabase-client.js` ou em qualquer arquivo público do frontend.
+
+Exemplo com Supabase CLI:
+
+```bash
+supabase functions deploy gerenciar-usuario
+```
+
+Depois da implantação, testar no Gestão Computum:
+
+- abrir **Usuários**;
+- editar um usuário existente;
+- alterar uma função;
+- verificar o vínculo com Calculista;
+- alterar o e-mail em uma conta de teste;
+- criar uma nova conta;
+- confirmar o login da nova conta.
+
+### 15.11 Regra de proteção administrativa
+
+O sistema deve manter pelo menos um administrador ativo. A rotina de gerenciamento bloqueia uma alteração que deixaria o projeto sem nenhum administrador ativo.
+
 ---
 
 ## 16. Cores e significado dos status
@@ -705,7 +796,8 @@ A finalidade das cores é permitir leitura rápida da situação sem substituir 
 |---|---|---|
 | 0.5 | 29/09/2026 | Reestruturação do manual interno em capítulos/abas; inclusão de busca; documentação detalhada do fluxo de revisão e devolução; requisitos da futura Gestão de Usuários; regras de cores dos status e ajuda contextual. |
 | 0.8 | 29/09/2026 | Atualização para o estado funcional da V42: Tipo de Serviço/Outro, tipos Tributário, entrega e aguardando pagamento, recebimentos parciais e múltiplos, documentação Forms + Apps Script + Drive, pasta 05 - Financeiro e contagem real de retrabalhos no Dashboard. |
-| 0.9 | 29/09/2026 | V44: ampliação dos Tipos de Serviço de Servidor Público e Saúde, cópia rápida do código das solicitações e Histórico financeiro separado de Contas a receber. |
+| 0.9 | 29/09/2026 | V45: ampliação dos Tipos de Serviço de Servidor Público e Saúde, cópia rápida do código das solicitações e Histórico financeiro separado de Contas a receber. |
+| 0.10 | 29/09/2026 | V45.2: implementação do painel Gerenciar usuários, criação/edição de contas, permissões Administrador e Calculista, vínculo usuário↔calculista, alteração de e-mail, ativação/desativação e sincronização de contas existentes no Supabase Auth. |
 
 
 ### Devolução para ajuste
@@ -739,7 +831,7 @@ O recibo deve ser armazenado na pasta privada da solicitação, preferencialment
 Após a aprovação do cálculo pelo administrador, a solicitação permanece em `ENVIADO` até que a entrega seja registrada administrativamente. A ação **Registrar entrega e aguardar pagamento** altera o status para `AGUARDANDO_PAGAMENTO` e registra o evento no histórico. A partir desse estado, o administrador pode utilizar o encerramento financeiro para registrar o recebimento e concluir a solicitação.
 
 
-## Atualização V44 — Tipos de Serviço e Financeiro
+## Atualização V45 — Tipos de Serviço e Financeiro
 
 - **Servidor Público:** foram acrescentados `1/3 de férias`, `Licença-prêmio` e `Valores devidos pela Administração Pública`.
 - **Saúde:** foram acrescentados `Reajuste de plano de saúde`, `Danos morais` e `Danos materiais`.

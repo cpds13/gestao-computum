@@ -1039,27 +1039,26 @@ textarea:focus {
 }
 
 .copy-code-btn {
-  width: 22px;
-  height: 22px;
+  width: 17px;
+  height: 17px;
   padding: 0;
   border: 0;
   background: transparent;
   color: var(--gray, #6F747A);
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1;
   display: inline-grid;
   place-items: center;
   cursor: pointer;
-  opacity: .52;
-  border-radius: 5px;
-  transition: opacity .15s ease, background .15s ease, color .15s ease;
+  opacity: .34;
+  border-radius: 3px;
+  transition: opacity .15s ease, color .15s ease;
 }
 
 .copy-code-btn:hover,
 .copy-code-btn:focus-visible {
-  opacity: 1;
+  opacity: .9;
   color: var(--teal, #0C5967);
-  background: rgba(12,89,103,.07);
   outline: none;
 }
 
@@ -1893,3 +1892,91 @@ textarea:focus {
   overflow-wrap: anywhere;
 }
 
+
+/* =========================================================
+   GESTÃO DE USUÁRIOS
+   ========================================================= */
+
+.user-management-card .card-head p {
+  margin: 5px 0 0;
+}
+
+.user-uid {
+  display: block;
+  margin-top: 4px;
+  font-size: 10px;
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-management-modal {
+  width: min(700px, 100%);
+}
+
+.user-role-box {
+  margin: 18px 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fbfcfc;
+  display: grid;
+  gap: 12px;
+}
+
+.user-role-box > div:first-child {
+  padding-bottom: 4px;
+}
+
+.user-role-box p {
+  margin: 4px 0 0;
+}
+
+.check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+  cursor: pointer;
+}
+
+.check-row input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  margin-top: 2px;
+  flex: 0 0 auto;
+}
+
+.check-row span {
+  display: grid;
+  gap: 3px;
+}
+
+.check-row small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.user-active-row {
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 15px;
+}
+
+.user-management-card tbody tr {
+  cursor: default;
+}
+
+.user-management-card tbody tr:hover {
+  background: #faf8f5;
+}
+
+@media (max-width: 760px) {
+  .user-management-card table {
+    min-width: 820px;
+  }
+
+  .user-management-modal .form-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,6 +1,6 @@
 # Gestão Computum — Especificação Completa do Projeto
 
-## Estado funcional em 29/09/2026 — V44
+## Estado funcional em 29/09/2026 — V45
 
 A especificação abaixo permanece como documento de referência do projeto. As seguintes partes já estão implementadas e validadas no frontend/Supabase:
 
@@ -1014,7 +1014,30 @@ Evita duplicação de informação.
 
 ---
 
-# 20. Segurança
+# 20. Gestão de usuários e permissões
+
+A V45.2 implementa o gerenciamento administrativo das contas de acesso. A conta autenticada em `auth.users` permanece a identidade principal. O registro em `public.usuarios` guarda nome, e-mail, situação e perfil administrativo. A função de Calculista é representada pelo vínculo `public.calculistas.usuario_id`.
+
+O mesmo usuário pode exercer Administrador e Calculista simultaneamente. A administração de contas ocorre pelo painel do sistema e não deve exigir edição manual de `auth.users`.
+
+### Operações
+
+- criar conta;
+- editar nome;
+- alterar e-mail;
+- definir Administrador;
+- definir Calculista;
+- combinar as duas funções;
+- vincular cadastro de calculista;
+- ativar/desativar.
+
+A criação e alteração da identidade no Supabase Auth são executadas por uma Edge Function com `service_role`, nunca pelo navegador. A função verifica que o solicitante é administrador antes de executar a operação.
+
+Contas existentes no Auth sem registro em `public.usuarios` são sincronizadas pela migration 008. O perfil inicial dessas contas é `administrativo` até que um administrador defina as funções.
+
+O sistema impede que uma operação administrativa deixe o projeto sem pelo menos um administrador ativo.
+
+# 21. Segurança
 
 Como o sistema poderá conter dados de processos e dados pessoais, a arquitetura deverá utilizar **Row Level Security (RLS)** no Supabase.
 
@@ -1955,7 +1978,7 @@ Ambas alimentam a mesma área de documentos da solicitação e devem permanecer 
 O detalhamento operacional está em `docs/GOOGLE_DRIVE_FORMS.md`.
 
 
-### V44 — ajustes funcionais
+### V45 — ajustes funcionais
 
 - Ampliação dos Tipos de Serviço de Servidor Público e Saúde, preservando os tipos existentes.
 - `Outro` continua sendo opção especial com detalhamento de até 100 caracteres.

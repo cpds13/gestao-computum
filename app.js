@@ -12,6 +12,12 @@ const CONFIG = {
   googleFormUrl: 'https://docs.google.com/forms/d/e/1FAIpQLSes_cqGBuoBI8rjiW2q5kkC0M9hrs5rrqpPijeEHQHmZ8dTXA/viewform?usp=pp_url',
   productionReady: false
 };
+
+// Mesmos dados públicos usados pelo supabase-client.js.
+// São chaves próprias para uso no navegador; nunca usar service_role aqui.
+const SUPABASE_URL_GLOBAL = 'https://gldaegbculoucdjluyek.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY_GLOBAL = 'sb_publishable_zlfMjJXpIVvLAwaG2ZkGjQ_A-ha4qRZ';
+
 /* =========================================================
    AUTENTICAÇÃO — SUPABASE
    ========================================================= */
@@ -64,6 +70,25 @@ async function carregarSessao() {
 
 function isAdministrador() {
   return currentProfile?.perfil === 'administrador';
+}
+
+function isUsuario() {
+  return currentProfile?.perfil === 'administrativo';
+}
+
+function podeAtribuirSolicitacao() {
+  return isAdministrador() || isUsuario();
+}
+
+function rotuloPerfilUsuario(usuario = currentProfile) {
+  if (!usuario) return 'Usuário';
+  const calcVinculado = db.calculistas?.some(c => c.usuario_id === usuario.id);
+  const admin = usuario.perfil === 'administrador';
+  const calc = usuario.perfil === 'calculista' || calcVinculado;
+  if (admin && calc) return 'Administrador · Calculista';
+  if (admin) return 'Administrador';
+  if (calc) return 'Calculista';
+  return 'Usuário';
 }
 
 function normalizarChaveStatus(status) {
@@ -156,11 +181,7 @@ function atualizarUsuarioInterface() {
 
   const nome = currentProfile.nome || 'Usuário';
 
-  const perfil = currentProfile.perfil
-    ? currentProfile.perfil
-        .replace(/_/g, ' ')
-        .replace(/\b\w/g, letra => letra.toUpperCase())
-    : 'Usuário';
+  const perfil = rotuloPerfilUsuario(currentProfile);
 
   const inicial = nome.trim().charAt(0).toUpperCase() || 'U';
 
@@ -192,10 +213,14 @@ function atualizarUsuarioInterface() {
     const view = button.dataset.view;
     let visible = true;
 
-    if (!admin && calc) {
-      visible = ['producao', 'manual'].includes(view);
-    } else if (admin && calc) {
+    if (admin) {
       visible = true;
+    } else if (calc) {
+      visible = ['producao', 'manual'].includes(view);
+    } else if (isUsuario()) {
+      visible = ['dashboard', 'solicitacoes', 'manual'].includes(view);
+    } else {
+      visible = ['manual'].includes(view);
     }
 
     button.style.display = visible ? '' : 'none';
@@ -577,7 +602,8 @@ async function carregarSolicitacoes() {
       lista.push([
         new Date(evento.data_hora).toLocaleString('pt-BR'),
         evento.descricao || evento.tipo_evento || 'Evento registrado',
-        usuario?.nome || ''
+        usuario?.nome || '',
+        usuario?.email || ''
       ]);
 
       historicoPorSolicitacao.set(
@@ -913,8 +939,14 @@ let queryRenderTimer = null;
 function nav(view) {
   if (!view || !views[view]) view = 'dashboard';
 
-  if (isCalculista() && !isAdministrador() && !['producao', 'manual'].includes(view)) {
-    view = 'producao';
+  if (isAdministrador()) {
+    // administrador pode acessar todas as áreas
+  } else if (isCalculista()) {
+    if (!['producao', 'manual'].includes(view)) view = 'producao';
+  } else if (isUsuario()) {
+    if (!['dashboard', 'solicitacoes', 'manual'].includes(view)) view = 'dashboard';
+  } else {
+    view = 'manual';
   }
 
   if (state.view === view && !renderEmAndamento) {
@@ -950,8 +982,12 @@ function render() {
   renderEmAndamento = true;
 
   try {
-    if (isCalculista() && !isAdministrador() && !['producao', 'manual'].includes(state.view)) {
+    if (!isAdministrador() && isCalculista() && !['producao', 'manual'].includes(state.view)) {
       state.view = 'producao';
+    } else if (!isAdministrador() && isUsuario() && !['dashboard', 'solicitacoes', 'manual'].includes(state.view)) {
+      state.view = 'dashboard';
+    } else if (!isAdministrador() && !isCalculista() && !isUsuario()) {
+      state.view = 'manual';
     }
 
     const titles = {
@@ -962,6 +998,7 @@ function render() {
       clientes: 'Clientes',
       processos: 'Processos',
       calculistas: 'Calculistas',
+      usuarios: 'Gerenciar usuários',
       financeiro: 'Financeiro',
       relatorios: 'Relatórios',
       configuracoes: 'Configurações',
@@ -994,6 +1031,7 @@ function tutorialIcon(name) {
     clientes: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.8 20c.6-3.4 2.4-5.1 5.2-5.1s4.6 1.7 5.2 5.1"/><path d="M16 5.5a3 3 0 0 1 0 5.8M16 14.9c2.5.3 4 2 4.4 4.1"/></svg>',
     processos: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h5M10 12h5M10 16h5"/></svg>',
     calculistas: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><rect x="7" y="6" width="10" height="3" rx="1"/><path d="M8 13h2M14 13h2M8 17h2M14 17h2"/></svg>',
+    usuarios: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 20c.6-3.4 2.5-5.2 5.5-5.2s4.9 1.8 5.5 5.2"/><path d="M16 11a3 3 0 1 0 0-6"/><path d="M16 14.8c2.3.5 3.8 2.1 4.3 4.7"/></svg>',
     financeiro: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M14.8 8.7c-.7-.7-1.7-1.1-2.9-1.1-1.8 0-3 .8-3 2 0 3.1 6 1.4 6 4.5 0 1.2-1.2 2.1-3.1 2.1-1.3 0-2.4-.4-3.2-1.2M12 6v12"/></svg>',
     relatorios: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V9M12 19V5M19 19v-7"/><path d="M3 19h18"/></svg>',
     manual: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H20v18H7.5A2.5 2.5 0 0 0 5 22V4.5Z"/><path d="M5 4.5V20M9 7h7M9 11h7M9 15h5"/></svg>',
@@ -1010,6 +1048,7 @@ function tutorialForView(view) {
     clientes: { title: 'Como funciona Clientes', steps: ['Cadastre os clientes atendidos pelo escritório.', 'Centralize os dados básicos para evitar novos cadastros repetidos.', 'Use o cadastro como referência ao criar solicitações e processos.'] },
     processos: { title: 'Como funciona Processos', steps: ['Registre os números dos processos e seus dados de referência.', 'Associe processos às solicitações quando necessário.', 'Consulte rapidamente o histórico relacionado ao processo.'] },
     calculistas: { title: 'Como funciona Calculistas', steps: ['Cadastre os profissionais que executam os cálculos.', 'Mantenha os calculistas ativos disponíveis para atribuição.', 'A distribuição das solicitações determina o que aparece no painel de produção de cada calculista.'] },
+    usuarios: { title: 'Como funciona Gerenciar usuários', steps: ['Administre contas de acesso já existentes ou crie novas contas.', 'Defina Administrador, Calculista ou as duas funções para a mesma pessoa.', 'Altere dados de acesso e situação sem apagar o histórico operacional.'] },
     financeiro: { title: 'Como funciona Financeiro', steps: ['Acompanhe valores cobrados e recebidos.', 'Registre pagamentos vinculados às solicitações.', 'Use essas informações para acompanhar saldos pendentes.'] },
     relatorios: { title: 'Como funciona Relatórios', steps: ['Consulte os dados consolidados da operação.', 'Use os relatórios para acompanhar volume, prazos e situação das demandas.', 'Os relatórios servem como apoio à gestão e não alteram os registros.'] },
     configuracoes: { title: 'Como funciona Configurações', steps: ['Consulte as configurações gerais do sistema.', 'Mantenha os parâmetros e integrações organizados.', 'Alterações sensíveis devem ser feitas somente por usuários autorizados.'] },
@@ -1841,13 +1880,16 @@ function manualView() {
       title: 'Usuários e permissões',
       intro: 'Configuração dos acessos e das funções atribuídas a cada pessoa.',
       articles: [
-        ['Perfis', 'Os perfis funcionais são Administrador e Calculista. As funções podem ser acumuladas pelo mesmo usuário.'],
+        ['Perfis', 'O sistema possui Usuário, Calculista e Administrador. Usuário tem visão geral e pode criar/visualizar/atribuir solicitações, sem editar/excluir, revisar ou operar o financeiro. Administrador e Calculista podem ser acumulados.'],
         ['Administrador', 'Acessa os módulos administrativos, acompanha todas as solicitações, atribui trabalhos, revisa, entrega, acompanha pagamentos e administra configurações.'],
         ['Calculista', 'Acessa Minha produção, trabalha nas solicitações atribuídas, consulta documentos, executa a produção e envia para revisão.'],
         ['Administrador + Calculista', 'O mesmo usuário pode ter acesso administrativo e também atuar como calculista. Patrick é o exemplo da configuração inicial do sistema.'],
-        ['Novo usuário', 'O cadastro futuro deve permitir nome, e-mail, perfil, situação e, quando aplicável, vínculo com um cadastro de calculista.'],
-        ['Alteração de e-mail', 'Alterar o e-mail de acesso deve preservar o mesmo usuário, identificador, permissões, vínculo como calculista, solicitações e histórico. Não se deve excluir e recriar a pessoa apenas para trocar o e-mail.'],
-        ['Ativação e desativação', 'Usuários inativos não devem conseguir acessar o sistema. A desativação deve preservar os registros históricos e as solicitações já relacionadas ao usuário.']
+        ['Gerenciar usuários', 'Somente Administradores acessam o painel Usuários. Nele podem criar, editar e ativar/desativar contas, alterar e-mail e definir funções.'],
+        ['Novo usuário', 'O cadastro permite nome, e-mail, senha inicial, situação, Administrador, Calculista ou nenhuma função específica. Sem função, a conta aparece como Usuário.'],
+        ['Alteração de e-mail', 'Alterar o e-mail de acesso preserva o mesmo usuário, identificador, permissões, vínculo como calculista, solicitações e histórico. Não se deve excluir e recriar a pessoa apenas para trocar o e-mail.'],
+        ['Usuário já existente no Auth', 'Contas que já existem no Supabase Auth são sincronizadas pela migration 008. Depois disso, o administrador pode localizar a conta e definir suas funções no painel.'],
+        ['Ativação e desativação', 'Usuários inativos não devem conseguir acessar o sistema. A desativação preserva os registros históricos e as solicitações já relacionadas ao usuário.'],
+        ['Proteção administrativa', 'O sistema deve manter pelo menos um administrador ativo; o painel bloqueia uma alteração que deixaria o projeto sem administrador.']
       ]
     },
     financeiro: {
@@ -1971,6 +2013,122 @@ function manualView() {
       </div>
     </section>
   `;
+}
+
+
+async function abrirUsuarioModal(usuario = null) {
+  if (!isAdministrador()) return;
+  const calculistaAtualDoUsuario = usuario ? db.calculistas.find(c => c.usuario_id === usuario.id) || null : null;
+  const editando = !!usuario;
+  const calculistaMarcado = !!calculistaAtualDoUsuario || usuario?.perfil === 'calculista';
+  const adminMarcado = usuario?.perfil === 'administrador';
+
+  $('#modalRoot').innerHTML = `
+    <div class="modal-backdrop" id="userModal">
+      <div class="modal user-management-modal">
+        <div class="modal-head"><div><span class="eyebrow">ADMINISTRAÇÃO</span><h2>${editando ? 'Editar usuário' : 'Adicionar usuário'}</h2></div><button class="close" data-close type="button" aria-label="Fechar">×</button></div>
+        <form id="userForm">
+          <div class="modal-body">
+            ${editando ? `<input type="hidden" name="user_id" value="${escapeHtml(usuario.id)}">` : ''}
+            <div class="form-grid">
+              <div class="field full"><label for="userName">Nome *</label><input class="input" id="userName" name="nome" required value="${escapeHtml(usuario?.nome || '')}" placeholder="Nome completo"></div>
+              <div class="field full"><label for="userEmail">E-mail *</label><input class="input" id="userEmail" name="email" type="email" required value="${escapeHtml(usuario?.email || '')}" placeholder="nome@dominio.com.br"></div>
+              ${!editando ? `<div class="field full"><label for="userPassword">Senha inicial *</label><input class="input" id="userPassword" name="password" type="password" minlength="8" required placeholder="Mínimo de 8 caracteres"><small class="muted">A senha é usada somente na criação da conta e não fica registrada no Gestão Computum.</small></div>` : ''}
+            </div>
+            <div class="user-role-box">
+              <div><strong>Funções</strong><p class="muted">Sem função específica, a conta fica como <strong>Usuário</strong>. Administrador e Calculista podem ser acumulados.</p></div>
+              <label class="check-row"><input type="checkbox" name="administrador" ${adminMarcado ? 'checked' : ''}> <span><strong>Administrador</strong><small>Acesso às rotinas administrativas e configurações.</small></span></label>
+              <label class="check-row"><input type="checkbox" name="calculista" id="userCalculista" ${calculistaMarcado ? 'checked' : ''}> <span><strong>Calculista</strong><small>Acesso a Minha produção e às demandas atribuídas.</small></span></label>
+            </div>
+            <div class="field"><label for="userCalcId">Cadastro de calculista</label><select class="input" id="userCalcId" name="calculista_id"><option value="">${calculistaMarcado ? 'Criar/vincular pelo nome' : 'Sem vínculo'}</option>${db.calculistas.filter(c => c.ativo !== false).sort((a,b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR')).map(c => `<option value="${escapeHtml(c.id)}" ${c.id === calculistaAtualDoUsuario?.id ? 'selected' : ''}>${escapeHtml(c.nome)}</option>`).join('')}</select><small class="muted">Se Calculista estiver marcado e nenhum cadastro for escolhido, o sistema cria ou reaproveita um cadastro pelo nome.</small></div>
+            <label class="check-row user-active-row"><input type="checkbox" name="ativo" ${usuario?.ativo !== false ? 'checked' : ''}> <span><strong>Usuário ativo</strong><small>Usuários inativos não conseguem acessar o sistema.</small></span></label>
+            ${editando ? `<div class="notice">Alterar o e-mail preserva o mesmo usuário, permissões, vínculo como calculista, solicitações e histórico.</div>` : `<div class="notice">A nova conta será criada no Supabase Auth e também receberá o cadastro interno correspondente.</div>`}
+          </div>
+          <div class="modal-foot"><button type="button" class="btn" data-close>Cancelar</button><button type="submit" class="btn btn-primary">${editando ? 'Salvar alterações' : 'Criar usuário'}</button></div>
+        </form>
+      </div>
+    </div>`;
+
+  const modal = $('#userModal');
+  modal.addEventListener('click', e => { if (e.target.matches('[data-close]')) closeModal(); });
+  const calcCheck = $('#userCalculista');
+  const calcSelect = $('#userCalcId');
+  const syncCalcState = () => { calcSelect.disabled = !calcCheck.checked; };
+  calcCheck.addEventListener('change', syncCalcState);
+  syncCalcState();
+  $('#userForm').addEventListener('submit', salvarUsuarioModal);
+}
+
+async function salvarUsuarioModal(event) {
+  event.preventDefault();
+  const form = event.target;
+  const button = form.querySelector('button[type="submit"]');
+  const dados = new FormData(form);
+  const userId = String(dados.get('user_id') || '').trim();
+  const payload = {
+    action: userId ? 'update' : 'create', user_id: userId || undefined,
+    nome: String(dados.get('nome') || '').trim(), email: String(dados.get('email') || '').trim().toLowerCase(),
+    password: String(dados.get('password') || ''), admin: dados.get('administrador') === 'on',
+    calculista: dados.get('calculista') === 'on', calculista_id: String(dados.get('calculista_id') || '').trim() || null,
+    ativo: dados.get('ativo') === 'on'
+  };
+  // Sem função específica, a conta permanece como Usuário.
+  button.disabled = true; button.textContent = userId ? 'Salvando…' : 'Criando…';
+  try {
+    // Obtém explicitamente a sessão atual para garantir que a Edge Function
+    // receba o access token da conta autenticada neste navegador.
+    const { data: sessionData, error: sessionError } =
+      await supabaseClient.auth.getSession();
+
+    if (sessionError) {
+      throw new Error('Não foi possível validar a sessão atual.');
+    }
+
+    const accessToken = sessionData?.session?.access_token;
+
+    if (!accessToken) {
+      throw new Error('Sua sessão expirou. Faça login novamente.');
+    }
+
+    // Usamos fetch diretamente para garantir que o Authorization enviado
+    // ao gateway da Edge Function seja exatamente o access token da sessão.
+    // Isso evita ambiguidades do helper functions.invoke quando há múltiplas
+    // instâncias/clientes ou uma sessão renovada recentemente.
+    const functionUrl = `${SUPABASE_URL_GLOBAL}/functions/v1/gerenciar-usuario`;
+    const response = await fetch(functionUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_PUBLISHABLE_KEY_GLOBAL,
+        'Authorization': `Bearer ${accessToken}`
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const responseText = await response.text();
+    let data = null;
+    try {
+      data = responseText ? JSON.parse(responseText) : null;
+    } catch {
+      data = null;
+    }
+
+    if (!response.ok) {
+      const detalhe = data?.error || responseText || `Erro HTTP ${response.status}`;
+      throw new Error(detalhe);
+    }
+
+    if (data?.error) throw new Error(data.error);
+
+    closeModal();
+    await carregarSolicitacoes();
+    atualizarUsuarioInterface();
+    render();
+    showToast(userId ? 'Usuário atualizado.' : 'Usuário criado com sucesso.');
+  } catch (error) {
+    console.error('Erro ao gerenciar usuário:', error); showToast(error.message || 'Não foi possível salvar o usuário.');
+    button.disabled = false; button.textContent = userId ? 'Salvar alterações' : 'Criar usuário';
+  }
 }
 
 function abrirVincularCalculistaUsuarioModal(calculista) {
@@ -2677,6 +2835,57 @@ const views = {
       </div>
       `
     );
+  },
+
+  usuarios() {
+    if (!isAdministrador()) return views.dashboard();
+
+    const calculistaPorUsuario = new Map(
+      db.calculistas.filter(c => c.usuario_id).map(c => [c.usuario_id, c])
+    );
+    const usuarios = db.usuarios.slice().sort((a, b) =>
+      String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR')
+    );
+
+    return pageHead(
+      'Gerenciar usuários',
+      'Crie e administre contas de acesso, funções e vínculo com calculistas.',
+      '<button class="btn btn-primary" type="button" data-new-user>＋ Adicionar usuário</button>'
+    ) + `
+      <section class="card user-management-card">
+        <div class="card-head">
+          <div>
+            <h2>Usuários do sistema</h2>
+            <p class="muted">As contas de acesso são vinculadas ao Supabase Auth. As funções são administradas aqui.</p>
+          </div>
+          <span class="status info">${usuarios.length} usuário(s)</span>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Usuário</th><th>E-mail</th><th>Funções</th><th>Calculista vinculado</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              ${usuarios.map(u => {
+                const calc = calculistaPorUsuario.get(u.id);
+                const funcoes = [];
+                if (u.perfil === 'administrador') funcoes.push('Administrador');
+                if (calc || u.perfil === 'calculista') funcoes.push('Calculista');
+                const rotulo = funcoes.length ? funcoes.join(' · ') : 'Usuário';
+                return `
+                  <tr>
+                    <td><strong>${escapeHtml(u.nome || 'Sem nome')}</strong><small class="muted user-uid">${escapeHtml(u.id)}</small></td>
+                    <td>${escapeHtml(u.email || '—')}</td>
+                    <td><strong>${rotulo}</strong></td>
+                    <td>${calc ? escapeHtml(calc.nome) : '<span class="muted">—</span>'}</td>
+                    <td><span class="status ${u.ativo !== false ? 'concluido' : 'cancelado'}">${u.ativo !== false ? 'Ativo' : 'Inativo'}</span></td>
+                    <td><button class="btn btn-secondary" type="button" data-edit-user="${escapeHtml(u.id)}">Editar</button></td>
+                  </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <div class="notice" style="margin-top:16px"><strong>Importante:</strong> a criação ou alteração da conta de autenticação é feita de forma administrativa. Não é necessário editar manualmente <code>auth.users</code> para definir permissões.</div>
+    `;
   },
 
   financeiro() {
@@ -4232,8 +4441,8 @@ async function createRequest(e) {
             'CRIACAO',
           descricao:
             tipoNome === 'Outro'
-              ? `Solicitação criada. Tipo de serviço: Outro — ${tipoServicoOutro}.`
-              : 'Solicitação criada.'
+              ? `Solicitação criada por ${currentProfile?.nome || currentUser?.email || 'Usuário'} (${currentProfile?.email || currentUser?.email || 'e-mail não informado'}). Tipo de serviço: Outro — ${tipoServicoOutro}.`
+              : `Solicitação criada por ${currentProfile?.nome || currentUser?.email || 'Usuário'} (${currentProfile?.email || currentUser?.email || 'e-mail não informado'}).`
         });
 
     if (historicoResult.error) {
@@ -4331,6 +4540,30 @@ function serviceSystem(tipo) {
   return '';
 }
 
+function abrirAtribuicaoSolicitacao(id) {
+  if (!podeAtribuirSolicitacao()) return;
+  const r = db.requests.find(item => item.id === id);
+  if (!r) return;
+  const calculistas = db.calculistas.filter(c => c.ativo !== false).slice().sort((a,b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+  $('#modalRoot').innerHTML = `
+    <div class="modal-backdrop" id="assignRequestModal"><div class="modal" style="max-width:620px">
+      <div class="modal-head"><div><span class="eyebrow">OPERAÇÃO</span><h2>Atribuir solicitação</h2><small class="muted">${escapeHtml(r.codigo)} · ${escapeHtml(r.cliente)}</small></div><button class="close" data-close type="button">×</button></div>
+      <form id="assignRequestForm"><div class="modal-body"><div class="notice" style="margin-bottom:16px">Esta ação altera somente o calculista responsável. Não permite editar ou excluir a solicitação.</div>
+      <div class="field"><label for="assignCalc">Calculista</label><select class="input" id="assignCalc" name="calculista_id"><option value="">Não atribuído</option>${calculistas.map(c => `<option value="${escapeHtml(c.id)}" ${c.id === r.calculistaId ? 'selected' : ''}>${escapeHtml(c.nome)}</option>`).join('')}</select></div>
+      </div><div class="modal-foot"><button type="button" class="btn" data-close>Cancelar</button><button type="submit" class="btn btn-primary">Salvar atribuição</button></div></form>
+    </div></div>`;
+  $('#assignRequestModal').addEventListener('click', e => { if (e.target.matches('[data-close]')) closeModal(); });
+  $('#assignRequestForm').addEventListener('submit', async e => {
+    e.preventDefault(); const button = e.target.querySelector('button[type="submit"]'); const calculistaId = String(new FormData(e.target).get('calculista_id') || '').trim() || null; button.disabled = true;
+    const { error } = await supabaseClient.from('solicitacoes').update({ calculista_id: calculistaId, updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) { console.error('Erro ao atribuir solicitação:', error); showToast('Não foi possível salvar a atribuição.'); button.disabled = false; return; }
+    const calc = calculistas.find(c => c.id === calculistaId); const actor = `${currentProfile?.nome || currentUser?.email || 'Usuário'} (${currentProfile?.email || currentUser?.email || 'e-mail não informado'})`;
+    const { error: histError } = await supabaseClient.from('historico_solicitacao').insert({ solicitacao_id: id, usuario_id: currentUser?.id || null, tipo_evento: 'ATRIBUICAO', descricao: calculistaId ? `Solicitação atribuída a ${calc?.nome || 'calculista'}. Ação realizada por ${actor}.` : `Atribuição removida. Ação realizada por ${actor}.`, data_hora: new Date().toISOString() });
+    if (histError) console.error('Atribuição salva, mas o histórico não foi registrado:', histError);
+    closeModal(); await carregarSolicitacoes(); render(); openDetail(id); showToast(calculistaId ? 'Solicitação atribuída.' : 'Atribuição removida.');
+  });
+}
+
 function openDetail(id) {
 
   const r =
@@ -4378,10 +4611,10 @@ function openDetail(id) {
             ×
           </button>
 
-          ${isAdministrador() ? `
+          ${podeAtribuirSolicitacao() ? `
             <div class="actions" style="margin-left:auto;margin-right:10px">
-              <button class="btn" data-edit-request="${r.id}">✎ Editar</button>
-              <button class="btn" data-delete-request="${r.id}">Excluir</button>
+              <button class="btn" data-assign-request="${r.id}">Atribuir</button>
+              ${isAdministrador() ? `<button class="btn" data-edit-request="${r.id}">✎ Editar</button><button class="btn" data-delete-request="${r.id}">Excluir</button>` : ''}
             </div>
           ` : ''}
 
@@ -4713,6 +4946,7 @@ function openDetail(id) {
                           <small>
                             ${e[0]}
                           </small>
+                          ${e[2] ? `<div class="muted" style="margin-top:4px;font-size:12px">${escapeHtml(e[2])}${e[3] ? ` · ${escapeHtml(e[3])}` : ''}</div>` : ''}
 
                         </div>
                       `
@@ -5500,6 +5734,12 @@ function initEventDelegation() {
   if (drawerRoot && !drawerRoot.dataset.eventsReady) {
     drawerRoot.dataset.eventsReady = 'true';
     drawerRoot.addEventListener('click', event => {
+      const assignButton = event.target.closest('[data-assign-request]');
+      if (assignButton && drawerRoot.contains(assignButton)) {
+        if (podeAtribuirSolicitacao()) abrirAtribuicaoSolicitacao(assignButton.dataset.assignRequest);
+        return;
+      }
+
       const editButton = event.target.closest('[data-edit-request]');
       if (editButton && drawerRoot.contains(editButton)) {
         const r = db.requests.find(x => x.id === editButton.dataset.editRequest);
@@ -5562,6 +5802,12 @@ function initEventDelegation() {
       abrirTutorialModal(state.view);
       return;
     }
+
+    const newUserButton = event.target.closest('[data-new-user]');
+    if (newUserButton) { event.preventDefault(); if (!isAdministrador()) return; abrirUsuarioModal(); return; }
+
+    const editUserButton = event.target.closest('[data-edit-user]');
+    if (editUserButton) { event.preventDefault(); if (!isAdministrador()) return; const usuario = db.usuarios.find(u => u.id === editUserButton.dataset.editUser); if (usuario) abrirUsuarioModal(usuario); return; }
 
     const linkCalcButton = event.target.closest('[data-link-calculista]');
     if (linkCalcButton) {
