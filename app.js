@@ -2396,9 +2396,17 @@ const views = {
           ].includes(r.status)
       );
 
+    const horaAtual = new Date().getHours();
+    const saudacao =
+      horaAtual >= 5 && horaAtual < 12
+        ? 'Bom dia'
+        : horaAtual >= 12 && horaAtual < 18
+          ? 'Boa tarde'
+          : 'Boa noite';
+
     return (
       pageHead(
-        `Boa noite, ${
+        `${saudacao}, ${
           currentProfile?.nome || 'Usuário'
         }`,
         'Visão geral da operação de cálculos judiciais.',
