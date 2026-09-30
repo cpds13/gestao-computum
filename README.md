@@ -4,9 +4,9 @@ Sistema web de gestão operacional de solicitações de cálculos judiciais.
 
 O Gestão Computum **não é um motor de cálculo**. Ele controla a operação da demanda: entrada, advogado, cliente, processo, área, tipo de serviço, calculista, prazo, documentos, produção, revisão, entrega, financeiro, retrabalho e histórico.
 
-## Estado atual — V47
+## Estado atual — V49
 
-A V47 consolida a V45 e acrescenta o painel Gerenciar usuários, permissões, vínculo usuário↔calculista, alteração de e-mail e administração segura das contas de acesso.
+A V49 consolida a V45 e acrescenta o painel Gerenciar usuários, permissões, vínculo usuário↔calculista, alteração de e-mail e administração segura das contas de acesso.
 
 ### Arquitetura
 
@@ -161,7 +161,7 @@ Não há dependência de Google Cloud ou cartão para o fluxo Forms + Apps Scrip
 
 ## Gestão de usuários
 
-A V47 inclui o painel administrativo **Gerenciar usuários**. Ele permite criar e editar contas, alterar e-mail, definir Administrador, Calculista ou as duas funções, vincular um cadastro de calculista e ativar/desativar usuários.
+A V49 inclui o painel administrativo **Gerenciar usuários**. Ele permite criar e editar contas, alterar e-mail, definir Administrador, Calculista ou as duas funções, vincular um cadastro de calculista e ativar/desativar usuários.
 
 Contas que já existiam no Supabase Auth são sincronizadas pela migration `008_gestao_usuarios.sql`. A criação e alteração da conta de autenticação usam a Edge Function `gerenciar-usuario`; a `service_role` fica exclusivamente no ambiente seguro do Supabase e nunca no frontend.
 
@@ -212,7 +212,7 @@ O Google Drive deve permanecer privado/restrito.
 ### V45
 - Tipos de Serviço, cópia rápida de código e histórico financeiro.
 
-### V47
+### V49
 - Painel Gerenciar usuários.
 - Criação e edição de contas.
 - Funções Administrador, Calculista e Administrador + Calculista.

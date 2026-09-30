@@ -1,6 +1,7 @@
-GESTÃO COMPUTUM — V47
+GESTÃO COMPUTUM — V49
 
 Versão oficial consolidada.
-Base: V45.
-Correção principal: autenticação segura da Edge Function gerenciar-usuario e chamada administrativa com access token explícito.
+Base: V47.
+Correção principal: diagnóstico e validação robusta do perfil administrativo na Edge Function gerenciar-usuario.
+A Edge Function diferencia erro de banco (500), usuário sem cadastro (403), usuário inativo (403) e perfil sem permissão (403), com logs técnicos para identificação do motivo.
 Não executar novamente as migrations 008 e 009 se elas já estiverem aplicadas.

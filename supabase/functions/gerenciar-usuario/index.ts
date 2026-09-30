@@ -61,13 +61,68 @@ async function exigirAdministrador(req: Request) {
 
   const authUser = await obterUsuarioAuthPorToken(token);
 
-  const { data: perfil, error: perfilError } = await adminClient
-    .from('usuarios')
-    .select('id, nome, email, perfil, ativo')
-    .eq('id', authUser.id)
-    .single();
+  console.log('Verificando administrador:', {
+    auth_id: authUser.id,
+    auth_email: authUser.email || null
+  });
 
-  if (perfilError || !perfil || !perfil.ativo || perfil.perfil !== 'administrador') {
+  // Consulta direta ao PostgREST. Isso evita depender do estado interno
+  // do cliente supabase-js dentro do runtime da Edge Function e nos permite
+  // distinguir claramente falhas de banco de ausência de cadastro.
+  const endpoint = `${supabaseUrl}/rest/v1/usuarios?id=eq.${encodeURIComponent(authUser.id)}&select=id,nome,email,perfil,ativo`;
+  const respostaPerfil = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+      Accept: 'application/json'
+    }
+  });
+
+  const textoPerfil = await respostaPerfil.text();
+  let registrosPerfil: any[] = [];
+  try {
+    registrosPerfil = textoPerfil ? JSON.parse(textoPerfil) : [];
+  } catch (_) {
+    registrosPerfil = [];
+  }
+
+  if (!respostaPerfil.ok) {
+    console.error('Erro ao consultar public.usuarios via REST:', {
+      auth_id: authUser.id,
+      http_status: respostaPerfil.status,
+      response: textoPerfil.slice(0, 1000)
+    });
+    throw new HttpError('Não foi possível validar o perfil administrativo.', 500);
+  }
+
+  const perfil = Array.isArray(registrosPerfil) ? registrosPerfil[0] : null;
+
+  if (!perfil) {
+    console.error('Usuário autenticado sem cadastro em public.usuarios:', {
+      auth_id: authUser.id,
+      auth_email: authUser.email || null
+    });
+    throw new HttpError('Usuário autenticado sem cadastro interno.', 403);
+  }
+
+  const perfilNormalizado = String(perfil.perfil || '').trim().toLowerCase();
+  const ativo = perfil.ativo === true;
+
+  console.log('Perfil encontrado:', {
+    usuario_id: perfil.id,
+    nome: perfil.nome || null,
+    email: perfil.email || null,
+    perfil: perfil.perfil || null,
+    perfil_normalizado: perfilNormalizado,
+    ativo
+  });
+
+  if (!ativo) {
+    throw new HttpError('O usuário administrador está inativo.', 403);
+  }
+
+  if (perfilNormalizado !== 'administrador') {
     throw new HttpError('Acesso restrito ao administrador.', 403);
   }
 

@@ -1,4 +1,4 @@
-/* Gestão Computum — V47 — gestão de usuários e autenticação administrativa.
+/* Gestão Computum — V49 — gestão de usuários e autenticação administrativa.
    primeira versão de frontend.
    O armazenamento local abaixo é apenas modo protótipo.
    Em produção, substituir a camada store por Supabase e o upload por Google Drive.
