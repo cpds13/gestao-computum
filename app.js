@@ -1,4 +1,4 @@
-/* Gestão Computum — V53 — gestão de usuários, permissões e exclusão segura.
+/* Gestão Computum — V54 — identidade por ID, calculistas elegíveis e permissões consolidadas.
    primeira versão de frontend.
    O armazenamento local abaixo é apenas modo protótipo.
    Em produção, substituir a camada store por Supabase e o upload por Google Drive.
@@ -104,6 +104,23 @@ function estaEmRevisao(status) {
   return normalizarChaveStatus(status) === 'EM_REVISAO';
 }
 
+function calculistasDisponiveis() {
+  const usuarios = Array.isArray(db.usuarios) ? db.usuarios : [];
+  const usuariosPorId = new Map(usuarios.map(u => [u.id, u]));
+
+  return db.calculistas.filter(c => {
+    if (c.ativo === false || !c.usuario_id) return false;
+    const usuario = usuariosPorId.get(c.usuario_id);
+    if (!usuario || usuario.ativo === false) return false;
+
+    // Um cadastro de calculista só participa da operação quando está
+    // explicitamente vinculado a um usuário que exerce a função Calculista.
+    // Administrador + Calculista é representado por perfil administrador
+    // com vínculo explícito ao cadastro de calculista.
+    return usuario.perfil === 'calculista' || usuario.perfil === 'administrador';
+  });
+}
+
 function calculistaAtual() {
   if (!currentUser?.id) return null;
 
@@ -118,7 +135,7 @@ function calculistaAtual() {
 
 // Um usuário pode exercer mais de uma função. O perfil calculista e o vínculo
 // explícito com um cadastro de calculista são as únicas formas de reconhecer
-// a função. Um cadastro antigo sem usuario_id não concede acesso.
+// a função. Um cadastro antigo sem usuario_id não concede acesso nem aparece nas listas operacionais.
 function isCalculista() {
   // Usuário (perfil administrativo) não pode herdar a função Calculista
   // por vínculo residual ou cadastro antigo.
@@ -953,6 +970,13 @@ let queryRenderTimer = null;
 function nav(view) {
   if (!view || !views[view]) view = 'dashboard';
 
+  // Em dispositivos móveis, qualquer toque em um item de navegação fecha
+  // a barra lateral, inclusive quando o usuário já está na mesma tela.
+  if (window.innerWidth < 801) {
+    const sidebar = $('#sidebar');
+    if (sidebar) sidebar.classList.remove('open');
+  }
+
   if (isAdministrador()) {
     // administrador pode acessar todas as áreas
   } else if (isUsuario()) {
@@ -972,11 +996,6 @@ function nav(view) {
   state.query = '';
 
   render();
-
-  if (window.innerWidth < 801) {
-    const sidebar = $('#sidebar');
-    if (sidebar) sidebar.classList.remove('open');
-  }
 }
 
 function activeNav() {
@@ -1884,7 +1903,7 @@ function manualView() {
         ['Advogados', 'Consulte os advogados cadastrados e as informações relacionadas. O Usuário não pode criar, editar ou excluir registros.'],
         ['Clientes', 'Consulte os clientes e seus dados relacionados às solicitações. O Usuário não pode alterar os cadastros.'],
         ['Processos', 'Consulte processos e suas relações com as solicitações. O Usuário não pode criar, editar ou excluir processos.'],
-        ['Calculistas', 'Consulte os calculistas disponíveis e suas informações. O Usuário não pode editar cadastros, vincular usuários ou alterar a situação dos calculistas.']
+        ['Calculistas', 'Consulte apenas os calculistas ativos com vínculo explícito a um usuário que exerce a função Calculista. O Usuário não pode editar cadastros, vincular usuários ou alterar a situação dos calculistas.']
       ]
     },
     relatorios_usuario: {
@@ -2854,10 +2873,7 @@ const views = {
   },
 
   calculistas() {
-    const names =
-      db.calculistas
-        .filter(c => c.ativo)
-        .map(c => c.nome);
+    const names = calculistasDisponiveis().map(c => c.nome);
 
     return (
       pageHead(
@@ -3744,12 +3760,13 @@ function newModal() {
                     Não atribuído
                   </option>
 
-                  ${db.calculistas
-                    .filter(c => c.ativo)
+                  ${calculistasDisponiveis()
+                    .slice()
+                    .sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'))
                     .map(
                       c =>
-                        `<option value="${c.nome}">
-                          ${c.nome}
+                        `<option value="${escapeHtml(c.id)}">
+                          ${escapeHtml(c.nome)}
                         </option>`
                     )
                     .join('')}
@@ -4017,10 +4034,10 @@ async function createRequest(e) {
           'Normal'
       ).trim();
 
-    const calculistaNome =
+    const calculistaIdSelecionado =
       String(
         f.get('calculista') || ''
-      ).trim();
+      ).trim() || null;
 
     const entregaLabel =
       String(
@@ -4354,42 +4371,18 @@ async function createRequest(e) {
     /*
      * 6. LOCALIZA O CALCULISTA
      *
-     * O cadastro de calculistas é separado dos usuários de acesso.
-     * Quando o nome do usuário corresponde ao cadastro, ele pode exercer
-     * a função de calculista; assim, um administrador também pode calcular.
+     * A atribuição usa exclusivamente o ID do cadastro de calculista.
+     * Nome nunca é usado para identificar ou conceder função.
      */
 
     let calculistaId = null;
 
-    if (calculistaNome) {
-
-      const calculistaResult =
-        await supabaseClient
-          .from('calculistas')
-          .select(
-            'id, nome, ativo'
-          )
-          .ilike(
-            'nome',
-            calculistaNome
-          )
-          .eq(
-            'ativo',
-            true
-          )
-          .limit(1)
-          .maybeSingle();
-
-      if (calculistaResult.error) {
-        throw calculistaResult.error;
+    if (calculistaIdSelecionado) {
+      const calculistaSelecionado = calculistasDisponiveis().find(c => c.id === calculistaIdSelecionado);
+      if (!calculistaSelecionado) {
+        throw new Error('O calculista selecionado não está disponível para atribuição.');
       }
-
-      if (
-        calculistaResult.data
-      ) {
-        calculistaId =
-          calculistaResult.data.id;
-      }
+      calculistaId = calculistaSelecionado.id;
     }
 
     /*
@@ -4667,7 +4660,7 @@ function abrirAtribuicaoSolicitacao(id) {
   if (!podeAtribuirSolicitacao()) return;
   const r = db.requests.find(item => item.id === id);
   if (!r) return;
-  const calculistas = db.calculistas.filter(c => c.ativo !== false).slice().sort((a,b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+  const calculistas = calculistasDisponiveis().slice().sort((a,b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
   $('#modalRoot').innerHTML = `
     <div class="modal-backdrop" id="assignRequestModal"><div class="modal" style="max-width:620px">
       <div class="modal-head"><div><span class="eyebrow">OPERAÇÃO</span><h2>Atribuir solicitação</h2><small class="muted">${escapeHtml(r.codigo)} · ${escapeHtml(r.cliente)}</small></div><button class="close" data-close type="button">×</button></div>
@@ -5506,7 +5499,7 @@ function editRequestModal(r) {
   const processoOptions = db.processos.map(p =>
     `<option value="${p.id}"${optionSelected(p.id, r.processoId)}>${p.numero_processo}</option>`
   ).join('');
-  const calcOptions = db.calculistas.filter(c => c.ativo !== false).map(c =>
+  const calcOptions = calculistasDisponiveis().map(c =>
     `<option value="${c.id}"${optionSelected(c.id, r.calculistaId)}>${c.nome}</option>`
   ).join('');
 

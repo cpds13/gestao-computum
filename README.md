@@ -4,11 +4,14 @@ Sistema web de gestão operacional de solicitações de cálculos judiciais.
 
 O Gestão Computum **não é um motor de cálculo**. Ele controla a operação da demanda: entrada, advogado, cliente, processo, área, tipo de serviço, calculista, prazo, documentos, produção, revisão, entrega, financeiro, retrabalho e histórico.
 
-## Estado atual — V53
+## Estado atual — V55
 
-A V53 adiciona exclusão segura de usuários pelo painel administrativo. A V52 corrige a apresentação do menu e do manual do perfil Usuário. O Usuário consulta Advogados, Clientes, Processos, Calculistas e Relatórios sem permissões de edição, e recebe um manual específico de consulta e acompanhamento.
+A V54 consolida a identificação de calculistas por vínculo explícito de ID e elimina cadastros órfãos das listas operacionais. A V53 adiciona exclusão segura de usuários pelo painel administrativo. A V52 corrige a apresentação do menu e do manual do perfil Usuário. O Usuário consulta Advogados, Clientes, Processos, Calculistas e Relatórios sem permissões de edição, e recebe um manual específico de consulta e acompanhamento.
 
 A V53 mantém o painel Gerenciar usuários, permissões, vínculo usuário↔calculista, alteração de e-mail e administração segura das contas de acesso.
+
+
+A V55 corrige a navegação do menu lateral em dispositivos móveis: ao tocar em qualquer item do menu, inclusive no Dashboard quando ele já está aberto, a barra lateral é fechada antes da permanência ou troca de tela. A correção não altera a navegação desktop nem as permissões.
 
 ### Arquitetura
 
@@ -279,3 +282,12 @@ O Administrador pode excluir uma conta pelo painel **Usuários**. Antes da exclu
 - O último administrador ativo não pode ser excluído.
 
 A migration `011_exclusao_segura_usuarios.sql` deve ser executada no Supabase antes de usar a exclusão.
+
+
+## V54 — identidade e listas de calculistas
+
+- A função Calculista é identificada por perfil/vínculo explícito, nunca por nome.
+- Listas operacionais de calculistas exibem somente cadastros ativos vinculados a usuários ativos que exercem a função Calculista.
+- Usuários do perfil Usuário e cadastros órfãos de calculista não aparecem para atribuição de solicitações.
+- A atribuição de novas solicitações usa `calculista_id`, e não o nome do profissional.
+- A alteração do nome de um usuário calculista deve refletir no cadastro de calculista vinculado pelo mesmo ID; históricos permanecem com a identificação registrada no momento da ação.

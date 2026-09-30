@@ -847,3 +847,13 @@ O perfil Usuário pode consultar os painéis de Advogados, Clientes, Processos, 
 ## Perfil Usuário
 
 O perfil Usuário possui acesso de consulta aos painéis de Advogados, Clientes, Processos, Calculistas e Relatórios, além de Dashboard e Solicitações. Pode registrar novas solicitações e, quando permitido pelo fluxo, atribuir novas solicitações a calculistas. Não pode editar ou excluir registros existentes, revisar cálculos, operar o financeiro ou gerenciar usuários. O manual exibido dentro do sistema é o Manual do Usuário quando essa função estiver ativa.
+
+
+## V54 — Calculistas e identificação por vínculo
+
+As listas operacionais exibem somente calculistas ativos com vínculo explícito a um usuário que exerce a função Calculista. A identificação é feita por ID; nomes são apenas informação de apresentação. A atribuição de solicitações usa o `calculista_id`.
+
+
+## V55 — Navegação mobile
+
+Em dispositivos móveis, tocar em qualquer item do menu lateral fecha o menu imediatamente, inclusive quando o item corresponde à tela que já está aberta. Essa regra evita que a barra lateral permaneça aberta no Dashboard. A correção é exclusivamente de navegação e não altera permissões ou regras de negócio.

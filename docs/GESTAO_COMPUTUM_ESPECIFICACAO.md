@@ -1993,3 +1993,8 @@ A função Calculista não é inferida pelo nome. O sistema reconhece a função
 
 ### Permissão do perfil Usuário — V51
 O perfil Usuário pode consultar os painéis de Advogados, Clientes, Processos, Calculistas e Relatórios. Esses painéis são somente leitura para esse perfil: criação, edição, exclusão e vínculo administrativo permanecem restritos ao Administrador.
+
+
+## V55 — Navegação mobile
+
+Em dispositivos móveis, tocar em qualquer item do menu lateral fecha o menu imediatamente, inclusive quando o item corresponde à tela que já está aberta. Essa regra evita que a barra lateral permaneça aberta no Dashboard. A correção é exclusivamente de navegação e não altera permissões ou regras de negócio.

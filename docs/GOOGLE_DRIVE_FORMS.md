@@ -105,3 +105,8 @@ Como a API automática foi retirada do escopo da V8, não haverá OAuth do Googl
 2. Integrar a lista de documentos do Gestão diretamente aos registros de `arquivos`.
 3. Permitir o cadastro manual de arquivos individuais além do vínculo de pasta.
 4. Avaliar automações adicionais sem expor credenciais ou tokens no frontend.
+
+
+## V55 — Navegação mobile
+
+Em dispositivos móveis, tocar em qualquer item do menu lateral fecha o menu imediatamente, inclusive quando o item corresponde à tela que já está aberta. Essa regra evita que a barra lateral permaneça aberta no Dashboard. A correção é exclusivamente de navegação e não altera permissões ou regras de negócio.
