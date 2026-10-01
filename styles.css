@@ -50,6 +50,33 @@ button {
    ESTRUTURA PRINCIPAL
    ========================================================= */
 
+.sidebar-collapse-btn {
+  display: none;
+  width: 100%;
+  min-height: 38px;
+  margin: 0 0 12px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 9px;
+  background: rgba(255,255,255,.05);
+  color: rgba(255,255,255,.78);
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  padding: 8px 12px;
+  font-size: 12px;
+  transition: .18s ease;
+}
+
+.sidebar-collapse-btn:hover {
+  background: rgba(255,255,255,.09);
+  color: #fff;
+}
+
+.sidebar-collapse-btn > span:first-child {
+  font-size: 18px;
+  line-height: 1;
+}
+
 .app-shell {
   min-height: 100vh;
   display: flex;
@@ -1205,17 +1232,21 @@ textarea:focus {
 @media(max-width:800px) {
   :root {
     --sidebar: 0px;
+    --mobile-sidebar-width: 250px;
+    --mobile-sidebar-collapsed: 62px;
   }
 
+  /*
+   * V66 — o menu mobile permanece fixo e sobreposto ao conteúdo.
+   * A página selecionada continua sendo renderizada normalmente atrás dele.
+   * Não existe overlay de captura de toque: os próprios itens do menu
+   * recebem o clique e executam a navegação.
+   */
   .sidebar {
-    transform: translateX(-100%);
-    width: 270px;
-    transition: .2s;
-  }
-
-  .sidebar.open {
-    transform: none;
-    box-shadow: 20px 0 50px rgba(0,0,0,.18);
+    transform: none !important;
+    width: var(--mobile-sidebar-width);
+    box-shadow: 16px 0 40px rgba(0,0,0,.16);
+    transition: width .18s ease;
   }
 
   .main {
@@ -1224,7 +1255,33 @@ textarea:focus {
   }
 
   .mobile-only {
+    display: none;
+  }
+
+  .sidebar-collapse-btn {
+    display: flex;
+  }
+
+  /*
+   * V67 — quando recolhido, o menu desaparece por completo.
+   * O acesso para reabri-lo passa a ser feito pelo botão ☰ do topbar.
+   */
+  .app-shell.mobile-sidebar-collapsed .sidebar {
+    width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    box-shadow: none;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  /* O botão ☰ volta a ser o único controle de abertura do menu. */
+  .app-shell.mobile-sidebar-collapsed #menuBtn {
     display: inline-flex;
+  }
+
+  .app-shell.mobile-sidebar-collapsed .sidebar-collapse-btn {
+    display: none;
   }
 
   .topbar {

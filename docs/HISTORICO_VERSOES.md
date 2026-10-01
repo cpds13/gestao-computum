@@ -49,3 +49,23 @@
 - O campo `Valor cobrado` de solicitações concluídas permanece somente leitura e não abre mais o ajuste financeiro ao ser clicado.
 - O cadeado ao lado do campo é o acionamento visual do ajuste financeiro excepcional para Administradores.
 - O atalho `Ctrl + Shift + E` permanece disponível.
+
+
+## V65 — 01/10/2026
+
+- Reestruturado o fechamento do menu mobile para evitar captura antecipada de `pointerdown`, `touchstart` e `click`.
+- A navegação do menu passa a ocorrer pelo clique do próprio item e o menu é fechado depois da navegação.
+- Criado overlay mobile explícito para impedir interação com o conteúdo atrás do menu.
+- Ajustada a largura do menu mobile para no máximo 280px, preservando a identidade visual.
+- Garantida área de toque mínima nos itens do menu.
+- Corrigido o comportamento responsivo de modais/drawers e formulários no mobile, evitando overflow horizontal e garantindo uma coluna nos grids.
+- Desktop e demais módulos não foram alterados intencionalmente.
+\n\n## V66 — 01/10/2026\n\n- O menu mobile passou a permanecer fixo e visível durante a navegação.\n- A área selecionada continua sendo renderizada normalmente por trás do menu, sem overlay de captura de toque.\n- Removidos os fechamentos automáticos por `pointerdown`, `touchstart` e `click` que interferiam na navegação mobile.\n- Adicionado botão `«` para recolher o menu; quando recolhido, o mesmo controle passa a permitir sua expansão.\n- No estado recolhido, o menu mantém os ícones e libera praticamente toda a área da tela para o conteúdo.\n- A alteração é restrita ao comportamento mobile; desktop e demais funcionalidades permanecem com a estrutura anterior.\n
+
+## V67 — 01/10/2026
+
+- No mobile, o menu continua fixo e aberto durante a navegação.
+- Ao recolher o menu, a barra lateral desaparece completamente e não ocupa espaço horizontal.
+- O botão `☰` existente no topbar volta a ser o controle para reabrir o menu.
+- O botão interno `«` permanece como controle para recolher o menu.
+- A mudança é restrita ao comportamento mobile; desktop e demais funcionalidades permanecem inalterados.

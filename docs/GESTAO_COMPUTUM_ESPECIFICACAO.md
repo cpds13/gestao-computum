@@ -2484,3 +2484,10 @@ O ajuste financeiro excepcional continua exclusivo para Administradores. Em soli
 A aba Financeiro apresenta indicadores compactos de Faturado, Recebido, A receber e Em atraso. A escala visual é deliberadamente menor que a do Dashboard.
 
 Em solicitações concluídas, `Valor cobrado` permanece somente leitura. Clicar no campo não abre qualquer modal. Para Administradores, o ajuste financeiro excepcional é acessado pelo cadeado ao lado do campo ou pelo atalho `Ctrl + Shift + E`.
+
+### V65 — menu e formulários mobile
+
+No mobile, o menu lateral utiliza um overlay próprio e um fluxo único de navegação: o item recebe o toque, executa a navegação e somente então o menu é fechado. O conteúdo atrás do menu não recebe interação enquanto ele estiver aberto. A largura máxima do menu é 280px.
+
+Formulários e drawers no mobile usam largura disponível, `box-sizing: border-box`, proteção contra overflow horizontal e grids de uma coluna. A identidade visual permanece a mesma.
+\n\n### V66 — navegação mobile com menu fixo\n\nNo mobile, o menu lateral permanece fixo e sobreposto ao conteúdo, sem bloquear a área de conteúdo com um overlay de captura. A seleção de uma opção navega diretamente para a view correspondente, mantendo o menu aberto. O botão `«` recolhe o menu; no estado recolhido, o mesmo controle permite expandi-lo novamente.\n
