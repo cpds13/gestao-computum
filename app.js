@@ -1135,7 +1135,7 @@ function pageHead(title, sub, action = '') {
           <h1>${title}</h1>
           <button class="tutorial-trigger" type="button" data-tutorial aria-label="Como funciona esta área" title="Como funciona esta área">${guide.icon}</button>
         </div>
-        <p>${sub}</p>
+        <p${state.view === 'solicitacoes' ? ' id="requestSearchSummary"' : ''}>${sub}</p>
       </div>
       ${action ? `<div class="actions">${action}</div>` : ''}
     </div>
@@ -1195,8 +1195,24 @@ async function copiarCodigo(codigo) {
 
 function requestRow(r) {
   return `
-    <tr data-open="${r.id}">
-      <td>${codigoComCopia(r.codigo)}</td>
+    <tr>
+      <td>
+        <span class="request-code">
+          <button
+            type="button"
+            class="request-open-code"
+            data-open="${r.id}"
+            title="Abrir solicitação ${escapeHtml(r.codigo)}"
+          >${escapeHtml(r.codigo)}</button>
+          <button
+            type="button"
+            class="copy-code-btn"
+            data-copy-code="${escapeHtml(r.codigo)}"
+            aria-label="Copiar código ${escapeHtml(r.codigo)}"
+            title="Copiar código"
+          >⧉</button>
+        </span>
+      </td>
       <td>${r.advogado}</td>
       <td>${r.cliente}</td>
       <td>${r.tipo}</td>
@@ -2339,6 +2355,26 @@ function abrirVincularCalculistaUsuarioModal(calculista) {
   });
 }
 
+function solicitacoesFiltradas() {
+  return db.requests.filter(
+    r =>
+      (
+        !state.query ||
+        `
+          ${r.codigo}
+          ${r.advogado}
+          ${r.cliente}
+          ${r.processo}
+          ${r.tipo}
+        `
+          .toLowerCase()
+          .includes(state.query.toLowerCase())
+      ) &&
+      (!state.status || r.status === state.status) &&
+      (!state.area || r.area === state.area)
+  );
+}
+
 const views = {
 
   producao() {
@@ -2520,32 +2556,7 @@ const views = {
   },
 
   solicitacoes() {
-    let rows =
-      db.requests.filter(
-        r =>
-          (
-            !state.query ||
-            `
-              ${r.codigo}
-              ${r.advogado}
-              ${r.cliente}
-              ${r.processo}
-              ${r.tipo}
-            `
-              .toLowerCase()
-              .includes(
-                state.query.toLowerCase()
-              )
-          ) &&
-          (
-            !state.status ||
-            r.status === state.status
-          ) &&
-          (
-            !state.area ||
-            r.area === state.area
-          )
-      );
+    const rows = solicitacoesFiltradas();
 
     return (
       pageHead(
@@ -6044,7 +6055,16 @@ function initEventDelegation() {
     if (q) {
       state.query = q.value;
       clearTimeout(queryRenderTimer);
-      queryRenderTimer = setTimeout(() => render(), 120);
+      queryRenderTimer = setTimeout(() => {
+        const rows = solicitacoesFiltradas();
+        const list = $('#requestList');
+        if (list) list.innerHTML = tableRequests(rows);
+
+        const summary = $('#requestSearchSummary');
+        if (summary) {
+          summary.textContent = `${rows.length} demanda(s) encontrada(s).`;
+        }
+      }, 80);
       return;
     }
 
@@ -6078,11 +6098,7 @@ function initEventDelegation() {
       if (viewMode.value === 'kanban') {
         list.innerHTML = kanban();
       } else {
-        let rows = db.requests.filter(r =>
-          (!state.query || `${r.codigo} ${r.advogado} ${r.cliente}`.toLowerCase().includes(state.query.toLowerCase())) &&
-          (!state.status || r.status === state.status) &&
-          (!state.area || r.area === state.area)
-        );
+        const rows = solicitacoesFiltradas();
         list.innerHTML = tableRequests(rows);
       }
     }

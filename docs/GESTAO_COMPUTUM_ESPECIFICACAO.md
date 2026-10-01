@@ -1,7 +1,5 @@
 # Gestão Computum — Especificação Completa do Projeto
-
-## Estado funcional em 29/09/2026 — V45
-
+## Estado funcional em 01/10/2026 — V59
 A especificação abaixo permanece como documento de referência do projeto. As seguintes partes já estão implementadas e validadas no frontend/Supabase:
 
 - autenticação e perfis;
@@ -1938,7 +1936,7 @@ A próxima etapa financeira deverá permitir múltiplos pagamentos por solicita�
 
 ## 18.12 Próxima etapa oficial
 
-A próxima versão funcional será dedicada à integração com Google Drive.
+A integração com Google Drive já faz parte da base consolidada; o próximo requisito estrutural definido é Backup e Restauração GCOMP.
 
 Objetivo:
 
@@ -1993,8 +1991,450 @@ A função Calculista não é inferida pelo nome. O sistema reconhece a função
 
 ### Permissão do perfil Usuário — V51
 O perfil Usuário pode consultar os painéis de Advogados, Clientes, Processos, Calculistas e Relatórios. Esses painéis são somente leitura para esse perfil: criação, edição, exclusão e vínculo administrativo permanecem restritos ao Administrador.
+---
+
+# 38. Estado consolidado — V58
+
+A **V58** é a versão oficial consolidada após a estabilização das funcionalidades administrativas, operacionais, financeiras, de permissões, navegação mobile e da migração histórica de dados.
+
+## 38.1 Gestão de usuários e permissões
+
+Funcionalidades implementadas e validadas:
+
+- gerenciamento de usuários exclusivamente pelo Administrador;
+- criação, edição, ativação e desativação de contas;
+- alteração de nome e e-mail preservando o UUID;
+- funções Administrador e Calculista podendo coexistir;
+- perfil técnico `administrativo` apresentado na interface como **Usuário**;
+- proteção contra exclusão do próprio usuário;
+- proteção contra exclusão ou desativação do último administrador ativo;
+- exclusão segura de usuários sem vínculos históricos;
+- bloqueio da exclusão quando existem vínculos ou histórico;
+- preservação do histórico mesmo quando a conta é desativada;
+- desconexão efetiva de usuário desativado ao atualizar a sessão;
+- vínculo explícito entre usuário e cadastro de calculista.
+
+A identificação operacional do calculista utiliza o relacionamento por ID/`usuario_id`. **Nome não é identificador de função ou de vínculo.**
+
+## 38.2 Calculistas
+
+A regra operacional consolidada é:
+
+```text
+public.usuarios
+       │
+       │ usuario_id
+       ▼
+public.calculistas
+       │
+       │ calculistas.id
+       ▼
+solicitacoes.calculista_id
+```
+
+O cadastro de calculista sem vínculo válido com um usuário não deve aparecer nas listas de atribuição operacional.
+
+A alteração do nome do usuário calculista atualiza o nome corrente do cadastro vinculado, sem alterar os nomes históricos já registrados nos eventos anteriores.
+
+## 38.3 Solicitações — regra de unicidade
+
+**Uma solicitação nunca é identificada pela combinação de advogado, cliente, área ou tipo de serviço.**
+
+O mesmo:
+
+- advogado pode ter várias solicitações;
+- cliente pode ter várias solicitações;
+- advogado + cliente pode ter várias solicitações;
+- advogado + cliente + área pode ter várias solicitações;
+- advogado + cliente + área + tipo de serviço pode inclusive ter mais de uma solicitação.
+
+Cada solicitação é um registro próprio e possui seu próprio `id` e `codigo`.
+
+Na migração histórica, o identificador externo utilizado foi `MIG-xxx`.
+
+Exemplo:
+
+```text
+CONDOMÍNIO BAIA DE TOLOUSE
+        │
+        ├── MIG-068 → Cível → Atualização
+        │
+        └── MIG-069 → Cível → Taxas de condomínio
+```
+
+O cliente é compartilhado quando é o mesmo cadastro, mas as solicitações permanecem independentes.
+
+Essa regra deve ser preservada em qualquer futura importação, migração, consulta ou funcionalidade de deduplicação.
+
+## 38.4 Migração histórica consolidada
+
+Em 01/10/2026 foi realizada a migração histórica para a Gestão Computum.
+
+Resultado consolidado:
+
+| Indicador | Resultado |
+|---|---:|
+| Solicitações migradas | **82** |
+| Total cobrado | **R$ 14.850,00** |
+| Total recebido | **R$ 13.800,00** |
+| Saldo a receber | **R$ 1.050,00** |
+| Pagamentos registrados | **77** |
+| Forma dos pagamentos migrados | **PIX** |
+
+Regra de status utilizada na migração:
+
+- com pagamento registrado → `CONCLUIDO`;
+- sem pagamento registrado → `AGUARDANDO_PAGAMENTO`.
+
+Datas desconhecidas não foram inventadas.
+
+As datas de entrega que eventualmente forem recuperadas posteriormente poderão ser atualizadas sem refazer a migração. Datas de pagamento desconhecidas devem permanecer sem preenchimento até que sejam comprovadas.
+
+### Identificador da migração
+
+Os registros históricos possuem código `MIG-xxx`, preservado como identificador operacional da migração.
+
+O código não substitui o UUID interno da solicitação.
+
+## 38.5 Financeiro
+
+O financeiro consolidado da V58 utiliza:
+
+```text
+SOLICITAÇÕES
+      +
+PAGAMENTOS
+      +
+RETRABALHOS
+```
+
+Indicadores principais:
+
+- faturado;
+- recebido;
+- a receber;
+- em atraso.
+
+Uma solicitação pode possuir múltiplos pagamentos. O saldo é calculado a partir dos valores efetivamente registrados.
+
+Os pagamentos históricos migrados foram registrados como **PIX**.
+
+## 38.6 Histórico e auditoria
+
+Eventos relevantes devem preservar o contexto histórico do momento em que ocorreram.
+
+Quando uma pessoa altera posteriormente seu nome ou e-mail:
+
+- novos eventos usam os dados atuais;
+- eventos antigos preservam os dados históricos registrados na época.
+
+A alteração do cadastro atual não deve reescrever a autoria histórica.
+
+## 38.7 Navegação mobile
+
+A navegação mobile foi estabilizada.
+
+Em telas com largura inferior a aproximadamente 801px:
+
+1. o menu lateral pode ser aberto normalmente;
+2. qualquer item de navegação fecha imediatamente o menu;
+3. isso também ocorre quando o usuário toca na tela que já está aberta;
+4. a regra se aplica a Dashboard, Solicitações e demais itens;
+5. a correção não altera permissões, autenticação ou regras de negócio.
+
+## 38.8 Segurança e banco
+
+A estrutura consolidada utiliza:
+
+- Supabase Auth;
+- PostgreSQL;
+- Row Level Security;
+- Edge Function para operações administrativas sensíveis;
+- vínculo por UUID entre usuários e entidades relacionadas;
+- histórico operacional;
+- proteção contra exclusões indevidas.
+
+As migrations consolidadas existentes permanecem como parte da estrutura do projeto:
+
+```text
+001_initial_schema.sql
+002_calculistas.sql
+003_documentos_forms_manual.sql
+004_calculistas_usuarios.sql
+005_encerramento_financeiro.sql
+006_tipo_servico_detalhamento.sql
+007_tipos_servico_areas.sql
+008_gestao_usuarios.sql
+009_permissoes_usuario_operacional.sql
+010_paineis_usuario_somente_leitura.sql
+011_exclusao_segura_usuarios.sql
+```
+
+**Não executar novamente migrations já aplicadas.**
+
+---
+
+# 39. Backup e restauração — requisito definido para a próxima versão
+
+A próxima alteração estrutural planejada será o sistema próprio de **Backup e Restauração**.
+
+O Supabase continuará sendo o **banco principal**. O objetivo não é substituir o Supabase, mas criar uma cópia independente e recuperável dos dados da Gestão Computum.
+
+## 39.1 Formato oficial
+
+O formato será:
+
+```text
+GES-COMPUTUM-DDMMAAAAHHMMSS.gcomp
+```
+
+Exemplo:
+
+```text
+GES-COMPUTUM-01102026010235.gcomp
+```
+
+A extensão `.gcomp` representa o formato próprio do Gestão Computum.
+
+Internamente, o arquivo será um **JSON estruturado**.
+
+## 39.2 Conteúdo do GCOMP
+
+O backup deverá preservar, conforme aplicável:
+
+- usuários;
+- advogados;
+- clientes;
+- processos;
+- áreas;
+- tipos de serviço;
+- calculistas;
+- solicitações;
+- pagamentos;
+- retrabalhos;
+- histórico;
+- arquivos/metadados vinculados;
+- IDs e relacionamentos necessários;
+- metadados do próprio backup.
+
+O arquivo deverá conter, no mínimo:
+
+```text
+formato
+versao_formato
+sistema
+versao_sistema
+data_backup
+quantidades
+dados
+```
+
+## 39.3 Versão do formato
+
+O formato GCOMP terá versionamento próprio e independente da versão do sistema.
+
+Exemplo:
+
+```text
+GCOMP 1
+GCOMP 2
+```
+
+Uma nova versão da Gestão não deverá inutilizar automaticamente backups antigos.
+
+Quando houver mudança estrutural, o sistema deverá identificar a versão do formato e, quando possível, executar a migração necessária antes da restauração.
+
+## 39.4 Exportação
+
+A área **Configurações → Backup e Restauração** deverá oferecer:
+
+**Exportar backup completo**
+
+O arquivo será baixado com o nome:
+
+```text
+GES-COMPUTUM-DDMMAAAAHHMMSS.gcomp
+```
+
+A exportação deve ser independente do formato de apresentação utilizado em Excel ou outros relatórios.
+
+## 39.5 Importação e restauração
+
+A importação deverá ocorrer em etapas:
+
+```text
+Selecionar GCOMP
+       ↓
+Ler arquivo
+       ↓
+Validar formato
+       ↓
+Validar versão
+       ↓
+Validar estrutura
+       ↓
+Validar IDs e relacionamentos
+       ↓
+Mostrar prévia
+       ↓
+Confirmar restauração
+       ↓
+Restaurar em transação
+```
+
+A validação deverá identificar, entre outros:
+
+- arquivo inválido;
+- versão incompatível;
+- IDs duplicados;
+- códigos duplicados;
+- referências inexistentes;
+- pagamentos sem solicitação;
+- solicitações com relações inválidas;
+- conflitos com dados atuais.
+
+## 39.6 Princípio transacional
+
+A restauração deve ser **atômica**:
+
+> ou todos os dados válidos são restaurados, ou nenhuma alteração permanece.
+
+Não deve existir restauração parcialmente concluída por causa de um erro no meio do processo.
+
+## 39.7 Backup antes da restauração
+
+Antes de uma restauração que possa alterar dados existentes, o sistema deverá oferecer a possibilidade de gerar um backup do estado atual.
+
+Fluxo previsto:
+
+```text
+Backup atual
+     ↓
+Validação do GCOMP
+     ↓
+Prévia
+     ↓
+Confirmação
+     ↓
+Restauração
+```
+
+## 39.8 GCOMP x Excel
+
+Os dois formatos terão finalidades diferentes.
+
+### GCOMP
+
+Uso principal:
+
+- backup;
+- restauração;
+- preservação de IDs;
+- preservação de relacionamentos;
+- recuperação de banco.
+
+### Excel
+
+Uso principal:
+
+- análise;
+- conferência;
+- edição de dados;
+- migrações controladas;
+- relatórios;
+- intercâmbio de dados tabulares.
+
+Excel não deve ser tratado como substituto do backup GCOMP.
+
+## 39.9 Escopo da próxima implementação
+
+A primeira implementação do GCOMP deverá priorizar:
+
+1. exportação integral;
+2. importação integral;
+3. validação;
+4. prévia;
+5. restauração transacional;
+6. preservação dos relacionamentos;
+7. compatibilidade por versão do formato.
+
+Importações parciais, restauração seletiva por tabela e outras funções avançadas poderão ser adicionadas posteriormente.
+
+**O GCOMP é um requisito definido, mas ainda não deve ser descrito como funcionalidade implementada na V58.**
+
+---
+
+# 40. Regra de versionamento do projeto
+
+O Gestão Computum utiliza **versionamento sequencial inteiro**.
+
+A cada nova versão oficial:
+
+```text
+V57
+↓
+V58
+↓
+V59
+↓
+V60
+...
+```
+
+Não utilizar versões intermediárias como:
+
+```text
+V58.1
+V58.2
+V57.1
+```
+
+Correções feitas durante o desenvolvimento de uma versão podem ser incorporadas à mesma versão enquanto ela ainda não tiver sido considerada oficialmente encerrada. Uma nova versão oficial somente deve receber o próximo número inteiro.
+
+A V58 é a versão oficial atual.
+
+A próxima alteração funcional planejada, Backup e Restauração GCOMP, será **V59** quando efetivamente implementada.
+
+---
+
+# 41. Estado atual do projeto
+
+Em 01/10/2026, o Gestão Computum possui como base consolidada:
+
+```text
+Frontend
+    ↓
+Gestão Computum
+    ↓
+Supabase Auth
+    ↓
+PostgreSQL / Supabase
+    ↓
+Google Drive / Google Forms
+    ↓
+Sistemas especializados Computum
+```
+
+O Supabase permanece como banco principal.
+
+O Google Drive permanece como repositório privado de documentos.
+
+O Gestão Computum permanece como centro administrativo e operacional, não como motor matemático dos cálculos.
+
+O formato GCOMP será a camada independente de backup e recuperação, sem substituir o Supabase.
+
+# 42. V59 — Pesquisa e abertura segura de solicitações
+
+A V59 corrige dois comportamentos da tela **Solicitações** identificados durante a validação da V58:
+
+- a pesquisa não reconstrói mais toda a página a cada caractere digitado; somente a lista filtrada e o contador de resultados são atualizados, preservando o foco do campo;
+- uma solicitação só é aberta ao clicar no **código** da solicitação; as demais células da linha não funcionam como área de abertura, reduzindo aberturas acidentais e alterações indevidas.
+
+A regra se aplica à tabela principal de solicitações em desktop e mobile.
 
 
-## V57 — Navegação mobile
+## 42. V60 — Apresentação do código nas solicitações
 
-Em dispositivos móveis, tocar em qualquer item do menu lateral fecha o menu imediatamente, inclusive quando o item corresponde à tela que já está aberta. Essa regra evita que a barra lateral permaneça aberta no Dashboard. A correção é exclusivamente de navegação e não altera permissões ou regras de negócio.
+A tabela de Solicitações exibe o código apenas uma vez. O próprio código é a ação para abrir a solicitação e o ícone de cópia permanece como ação independente. As demais colunas da linha não abrem a solicitação, reduzindo aberturas acidentais, especialmente em telas sensíveis ao toque.
+
+A correção da pesquisa da V59 é preservada: o campo de pesquisa mantém o foco durante a digitação e a atualização dos resultados não recria o input.

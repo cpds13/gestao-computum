@@ -1,6 +1,6 @@
 # Manual do Administrador — Gestão Computum
 
-**Versão:** V57  
+**Versão:** V58  
 **Data:** 29/09/2026  
 **Status:** Em desenvolvimento
 
