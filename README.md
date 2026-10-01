@@ -300,3 +300,7 @@ A V58 define o formato independente GCOMP (`.gcomp`) para backup e restauração
 ### V60 — Solicitações
 
 A V60 mantém as correções de pesquisa e navegação da V59 e ajusta a apresentação do código na tabela de Solicitações. O código passa a aparecer uma única vez, funcionando como a ação para abrir a solicitação, com o ícone de cópia ao lado. Advogado, cliente, serviço e demais células permanecem sem ação de abertura.
+
+## V61 — ajuste financeiro excepcional
+
+Administradores podem corrigir valores de solicitações concluídas por meio de atalho protegido (`Ctrl + Shift + E`), com motivo obrigatório, confirmação e registro no histórico.

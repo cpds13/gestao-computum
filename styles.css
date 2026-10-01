@@ -2002,3 +2002,25 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 }
+
+/* V64 — indicadores financeiros: destaque intermediário, abaixo do Dashboard. */
+.financeiro-kpis .value {
+  font-size: 30px;
+  line-height: 1.08;
+  font-weight: 700;
+}
+
+.financeiro-kpis .label {
+  font-size: 12px;
+  letter-spacing: .08em;
+}
+
+.financeiro-kpis .sub {
+  font-size: 12px;
+}
+
+@media (max-width: 760px) {
+  .financeiro-kpis .value {
+    font-size: 24px;
+  }
+}

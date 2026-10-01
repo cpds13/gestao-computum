@@ -2438,3 +2438,49 @@ A regra se aplica à tabela principal de solicitações em desktop e mobile.
 A tabela de Solicitações exibe o código apenas uma vez. O próprio código é a ação para abrir a solicitação e o ícone de cópia permanece como ação independente. As demais colunas da linha não abrem a solicitação, reduzindo aberturas acidentais, especialmente em telas sensíveis ao toque.
 
 A correção da pesquisa da V59 é preservada: o campo de pesquisa mantém o foco durante a digitação e a atualização dos resultados não recria o input.
+
+
+# 42. V61 — Ajuste financeiro excepcional
+
+A V61 introduz uma forma protegida de corrigir o valor cobrado de uma solicitação já encerrada financeiramente.
+
+- disponível exclusivamente para Administradores;
+- não é apresentado como botão comum de edição;
+- acesso por `Ctrl + Shift + E` (ou `Cmd + Shift + E`);
+- funciona quando uma solicitação concluída está aberta;
+- exige novo valor;
+- exige motivo obrigatório;
+- apresenta uma confirmação final;
+- não altera automaticamente os pagamentos já registrados;
+- recalcula o valor financeiro da solicitação;
+- registra o ajuste em `historico_solicitacao` como `AJUSTE_FINANCEIRO`;
+- a operação é executada de forma atômica por função PostgreSQL protegida por verificação de administrador.
+
+A V60 permanece a base anterior; a V61 é a versão oficial após esta implementação.
+
+
+# 43. V62 — Correção do atalho financeiro
+
+O atalho `Ctrl + Shift + E` foi ajustado para funcionar enquanto o drawer da solicitação estiver aberto, inclusive quando o foco estiver em campos editáveis do formulário. O contexto do drawer substitui a antiga restrição que bloqueava atalhos disparados a partir de `input`, `textarea` ou `select`.
+
+A restrição de Administrador e as proteções do modal financeiro permanecem.
+
+### V62 — comportamento da aba Financeiro
+
+Na aba Financeiro, as linhas de Contas a receber e Histórico financeiro não são mais clicáveis integralmente. Assim como em Solicitações, somente o código da solicitação abre o drawer; o ícone ao lado apenas copia o código.
+
+### Fluxo do ajuste financeiro na V62
+
+Ao editar uma solicitação concluída, o campo `Valor cobrado` permanece bloqueado para edição direta. Para Administradores, clicar nesse campo abre o modal de ajuste financeiro excepcional. O atalho `Ctrl + Shift + E` permanece como alternativa.
+
+### V63 — consulta financeira e ajuste protegido
+
+A aba Financeiro possui filtros por pesquisa, status e área. A pesquisa permite localizar trabalhos por código, advogado, cliente, processo ou serviço e exibe os totais correspondentes ao conjunto filtrado.
+
+O ajuste financeiro excepcional continua exclusivo para Administradores. Em solicitações concluídas, o campo de valor permanece bloqueado e o acesso ao ajuste é indicado por um cadeado discreto. O atalho `Ctrl + Shift + E` continua disponível quando o drawer da solicitação estiver aberto, inclusive quando a solicitação foi acessada pela aba Financeiro.
+
+### V64 — indicadores financeiros e bloqueio do valor
+
+A aba Financeiro apresenta indicadores compactos de Faturado, Recebido, A receber e Em atraso. A escala visual é deliberadamente menor que a do Dashboard.
+
+Em solicitações concluídas, `Valor cobrado` permanece somente leitura. Clicar no campo não abre qualquer modal. Para Administradores, o ajuste financeiro excepcional é acessado pelo cadeado ao lado do campo ou pelo atalho `Ctrl + Shift + E`.

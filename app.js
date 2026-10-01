@@ -754,7 +754,10 @@ const state = {
   area: '',
   selected: null,
   manualTab: 'visao',
-  manualQuery: ''
+  manualQuery: '',
+  financeQuery: '',
+  financeStatus: '',
+  financeArea: ''
 };
 
 const $ = (s, root = document) => root.querySelector(s);
@@ -1003,6 +1006,11 @@ function nav(view) {
 
   state.view = view;
   state.query = '';
+  if (view !== 'financeiro') {
+    state.financeQuery = '';
+    state.financeStatus = '';
+    state.financeArea = '';
+  }
 
   render();
 }
@@ -1164,6 +1172,27 @@ function codigoComCopia(codigo) {
         title="Copiar código"
       >⧉</button>
       <strong>${escapeHtml(valor)}</strong>
+    </span>
+  `;
+}
+
+function codigoComAberturaFinanceiro(codigo, id) {
+  const valor = String(codigo || '');
+  return `
+    <span class="request-code">
+      <button
+        type="button"
+        class="request-open-code"
+        data-open="${escapeHtml(id)}"
+        title="Abrir solicitação ${escapeHtml(valor)}"
+      >${escapeHtml(valor)}</button>
+      <button
+        type="button"
+        class="copy-code-btn"
+        data-copy-code="${escapeHtml(valor)}"
+        aria-label="Copiar código ${escapeHtml(valor)}"
+        title="Copiar código"
+      >⧉</button>
     </span>
   `;
 }
@@ -1602,6 +1631,215 @@ function abrirModalConclusaoFinanceira(r) {
     showToast(quitado ? 'Recebimento final registrado e solicitação concluída.' : `Recebimento parcial de ${money(valorRecebido)} registrado. Saldo restante: ${money(novoSaldo)}.`);
     openDetail(r.id);
   });
+}
+
+
+function abrirModalAjusteFinanceiro(r) {
+  if (!isAdministrador()) {
+    showToast('Somente Administradores podem realizar ajustes financeiros.');
+    return;
+  }
+
+  if (!r || !['CONCLUIDO', 'CONCLUÍDO'].includes(r.status)) {
+    showToast('O ajuste financeiro excepcional está disponível somente para solicitações concluídas.');
+    return;
+  }
+
+  const valorAtual = Number(r.valor || 0);
+
+  const renderFormulario = () => {
+    $('#modalRoot').innerHTML = `
+      <div class="modal-backdrop" id="financialAdjustmentModal">
+        <div class="modal financial-modal" style="max-width:720px">
+          <div class="modal-head">
+            <div>
+              <span class="eyebrow">AJUSTE EXCEPCIONAL</span>
+              <h2>Ajuste financeiro</h2>
+              <small class="muted">${escapeHtml(r.codigo)} · ${escapeHtml(r.cliente)}</small>
+            </div>
+            <button class="close" data-close type="button" aria-label="Fechar">×</button>
+          </div>
+
+          <form id="financialAdjustmentForm">
+            <div class="modal-body">
+              <div class="notice" style="margin-bottom:16px">
+                Esta solicitação já foi encerrada financeiramente. O ajuste é exclusivo para Administradores e ficará registrado no histórico.
+              </div>
+
+              <div class="financial-summary compact">
+                <div>
+                  <small>Valor atual</small>
+                  <strong>${money(valorAtual)}</strong>
+                </div>
+                <div>
+                  <small>Total recebido</small>
+                  <strong>${money(r.recebido)}</strong>
+                </div>
+                <div>
+                  <small>Saldo atual</small>
+                  <strong>${money(saldoPendente(r))}</strong>
+                </div>
+              </div>
+
+              <div class="field" style="margin-top:16px">
+                <label for="financialAdjustmentValue">Novo valor cobrado *</label>
+                <input
+                  class="input"
+                  id="financialAdjustmentValue"
+                  name="novo_valor"
+                  inputmode="decimal"
+                  autocomplete="off"
+                  value="${valorAtual.toFixed(2).replace('.', ',')}"
+                  required
+                >
+              </div>
+
+              <div class="field" style="margin-top:14px">
+                <label for="financialAdjustmentReason">Motivo do ajuste *</label>
+                <textarea
+                  class="input"
+                  id="financialAdjustmentReason"
+                  name="motivo"
+                  rows="4"
+                  maxlength="500"
+                  placeholder="Ex.: valor lançado incorretamente."
+                  required
+                ></textarea>
+              </div>
+
+              <small class="muted" style="display:block;margin-top:10px">
+                O pagamento já registrado não será alterado automaticamente. O novo saldo será recalculado a partir do novo valor.
+              </small>
+            </div>
+
+            <div class="modal-foot">
+              <button type="button" class="btn" data-close>Cancelar</button>
+              <button type="submit" class="btn btn-primary">Continuar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    const modal = $('#financialAdjustmentModal');
+    modal.addEventListener('click', e => {
+      if (e.target.matches('[data-close]')) closeModal();
+    });
+
+    $('#financialAdjustmentValue')?.focus();
+
+    $('#financialAdjustmentForm').addEventListener('submit', e => {
+      e.preventDefault();
+
+      const novoValor = parseMoney(new FormData(e.target).get('novo_valor'));
+      const motivo = String(new FormData(e.target).get('motivo') || '').trim();
+
+      if (!Number.isFinite(novoValor) || novoValor < 0) {
+        showToast('Informe um valor válido.');
+        $('#financialAdjustmentValue')?.focus();
+        return;
+      }
+
+      if (novoValor === valorAtual) {
+        showToast('O novo valor deve ser diferente do valor atual.');
+        $('#financialAdjustmentValue')?.focus();
+        return;
+      }
+
+      if (!motivo) {
+        showToast('Informe o motivo do ajuste.');
+        $('#financialAdjustmentReason')?.focus();
+        return;
+      }
+
+      const novoSaldo = Math.max(0, novoValor - Number(r.recebido || 0));
+
+      $('#modalRoot').innerHTML = `
+        <div class="modal-backdrop" id="financialAdjustmentConfirmModal">
+          <div class="modal financial-modal" style="max-width:680px">
+            <div class="modal-head">
+              <div>
+                <span class="eyebrow">CONFIRMAÇÃO</span>
+                <h2>Confirmar ajuste financeiro</h2>
+                <small class="muted">${escapeHtml(r.codigo)}</small>
+              </div>
+              <button class="close" data-close type="button" aria-label="Fechar">×</button>
+            </div>
+
+            <div class="modal-body">
+              <div class="financial-summary compact">
+                <div>
+                  <small>Valor anterior</small>
+                  <strong>${money(valorAtual)}</strong>
+                </div>
+                <div>
+                  <small>Novo valor</small>
+                  <strong>${money(novoValor)}</strong>
+                </div>
+                <div>
+                  <small>Novo saldo</small>
+                  <strong>${money(novoSaldo)}</strong>
+                </div>
+              </div>
+
+              <div class="notice" style="margin-top:16px">
+                <strong>Motivo:</strong><br>
+                ${escapeHtml(motivo)}
+              </div>
+
+              <p class="muted" style="margin-top:14px">
+                O pagamento registrado permanecerá inalterado. Esta operação será registrada no histórico financeiro com o usuário, data/hora, valor anterior, novo valor e motivo.
+              </p>
+            </div>
+
+            <div class="modal-foot">
+              <button type="button" class="btn" id="cancelFinancialAdjustment">Voltar</button>
+              <button type="button" class="btn btn-primary" id="confirmFinancialAdjustment">Confirmar ajuste</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      const confirmModal = $('#financialAdjustmentConfirmModal');
+      confirmModal.addEventListener('click', ev => {
+        if (ev.target.matches('[data-close]')) {
+          closeModal();
+        }
+      });
+
+      $('#cancelFinancialAdjustment').addEventListener('click', () => {
+        renderFormulario();
+      });
+
+      $('#confirmFinancialAdjustment').addEventListener('click', async buttonEvent => {
+        const button = buttonEvent.currentTarget;
+        button.disabled = true;
+        button.textContent = 'Salvando...';
+
+        const { data, error } = await supabaseClient.rpc('ajustar_valor_financeiro', {
+          p_solicitacao_id: r.id,
+          p_novo_valor: novoValor,
+          p_motivo: motivo
+        });
+
+        if (error) {
+          console.error('Erro no ajuste financeiro excepcional:', error);
+          showToast(error.message || 'Não foi possível realizar o ajuste financeiro.');
+          button.disabled = false;
+          button.textContent = 'Confirmar ajuste';
+          return;
+        }
+
+        closeModal();
+        await carregarSolicitacoes();
+        render();
+        showToast(`Valor ajustado de ${money(valorAtual)} para ${money(novoValor)}.`);
+        openDetail(r.id);
+      });
+    });
+  };
+
+  renderFormulario();
 }
 
 async function registrarEntregaAguardandoPagamento(id) {
@@ -2375,6 +2613,157 @@ function solicitacoesFiltradas() {
   );
 }
 
+
+function financeiroFiltrado() {
+  const q = String(state.financeQuery || '').trim().toLowerCase();
+
+  return db.requests.filter(r => {
+    const texto = [
+      r.codigo,
+      r.advogado,
+      r.cliente,
+      r.processo,
+      r.tipo
+    ].join(' ').toLowerCase();
+
+    return (
+      (!q || texto.includes(q)) &&
+      (!state.financeStatus || normalizarChaveStatus(r.status) === normalizarChaveStatus(state.financeStatus)) &&
+      (!state.financeArea || r.area === state.financeArea)
+    );
+  });
+}
+
+function financeiroTabelas(rows) {
+  const contas = rows.filter(r => Number(r.valor || 0) > Number(r.recebido || 0));
+  const concluidas = rows.filter(r => normalizarChaveStatus(r.status) === 'CONCLUIDO');
+
+  return `
+    <div class="card" style="margin-top:16px">
+      <div class="card-head">
+        <h2>Contas a receber</h2>
+        <span class="muted">${contas.length} trabalho(s)</span>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Solicitação</th>
+              <th>Advogado</th>
+              <th>Serviço</th>
+              <th>Cobrado</th>
+              <th>Recebido</th>
+              <th>Saldo</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${
+              contas.length
+                ? contas.map(r => `
+                  <tr>
+                    <td>${codigoComAberturaFinanceiro(r.codigo, r.id)}</td>
+                    <td>${escapeHtml(r.advogado)}</td>
+                    <td>${escapeHtml(r.tipo)}</td>
+                    <td class="money">${money(r.valor)}</td>
+                    <td class="money">${money(r.recebido)}</td>
+                    <td class="money">${money(Number(r.valor || 0) - Number(r.recebido || 0))}</td>
+                    <td>
+                      <span class="status ${daysTo(r.prazo) < 0 ? 'atrasado' : 'aguardando'}">
+                        ${daysTo(r.prazo) < 0 ? 'Em atraso' : 'A receber'}
+                      </span>
+                    </td>
+                  </tr>
+                `).join('')
+                : `
+                  <tr>
+                    <td colspan="7">
+                      <div class="empty">Nenhuma conta a receber encontrada com os filtros atuais.</div>
+                    </td>
+                  </tr>
+                `
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="card-head">
+        <div>
+          <h2>Histórico financeiro</h2>
+          <p class="muted" style="margin-top:4px">Solicitações encerradas financeiramente e seus recebimentos registrados.</p>
+        </div>
+        <span class="muted">${concluidas.length} trabalho(s)</span>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Solicitação</th>
+              <th>Advogado</th>
+              <th>Serviço</th>
+              <th>Cobrado</th>
+              <th>Recebido</th>
+              <th>Último recebimento</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${
+              concluidas.length
+                ? concluidas.map(r => `
+                  <tr>
+                    <td>${codigoComAberturaFinanceiro(r.codigo, r.id)}</td>
+                    <td>${escapeHtml(r.advogado)}</td>
+                    <td>${escapeHtml(r.tipo)}</td>
+                    <td class="money">${money(r.valor)}</td>
+                    <td class="money">${money(r.recebido)}</td>
+                    <td>
+                      ${r.ultimoPagamento
+                        ? `${fmtDate(r.ultimoPagamento.data_pagamento)} · ${escapeHtml(formatarFormaPagamento(r.ultimoPagamento.forma_pagamento))}`
+                        : '<span class="muted">Sem pagamento registrado</span>'}
+                    </td>
+                    <td><span class="status concluido">Concluído</span></td>
+                  </tr>
+                `).join('')
+                : `
+                  <tr>
+                    <td colspan="7">
+                      <div class="empty">Nenhuma solicitação concluída encontrada com os filtros atuais.</div>
+                    </td>
+                  </tr>
+                `
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function atualizarFinanceiroFiltrado() {
+  const rows = financeiroFiltrado();
+  const billed = rows.reduce((a, r) => a + Number(r.valor || 0), 0);
+  const rec = rows.reduce((a, r) => a + Number(r.recebido || 0), 0);
+  const due = Math.max(0, billed - rec);
+
+  const tables = $('#financeTables');
+  if (tables) tables.innerHTML = financeiroTabelas(rows);
+
+  const summary = $('#financeFilterSummary');
+  if (summary) {
+    summary.innerHTML = `
+      <strong>${rows.length}</strong> trabalho(s) encontrado(s)
+      <span>·</span> Faturado <strong>${money(billed)}</strong>
+      <span>·</span> Recebido <strong>${money(rec)}</strong>
+      <span>·</span> A receber <strong>${money(due)}</strong>
+    `;
+  }
+}
+
 const views = {
 
   producao() {
@@ -3056,20 +3445,15 @@ const views = {
   },
 
   financeiro() {
-    const billed =
-      db.requests.reduce(
-        (a, r) => a + r.valor,
-        0
-      );
+    const filtered = financeiroFiltrado();
+    const billed = filtered.reduce((a, r) => a + Number(r.valor || 0), 0);
+    const rec = filtered.reduce((a, r) => a + Number(r.recebido || 0), 0);
+    const due = Math.max(0, billed - rec);
+    const overdue = filtered
+      .filter(r => daysTo(r.prazo) < 0 && Number(r.valor || 0) > Number(r.recebido || 0))
+      .reduce((a, r) => a + (Number(r.valor || 0) - Number(r.recebido || 0)), 0);
 
-    const rec =
-      db.requests.reduce(
-        (a, r) => a + r.recebido,
-        0
-      );
-
-    const due =
-      billed - rec;
+    const areas = [...new Set(db.requests.map(r => r.area).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
     return (
       pageHead(
@@ -3078,211 +3462,66 @@ const views = {
       ) +
 
       `
-      <div class="grid kpi-grid">
+      <div class="card filters" style="margin-top:16px">
+        <div class="field">
+          <label>Pesquisar</label>
+          <input
+            class="input"
+            id="financeQ"
+            placeholder="Advogado, cliente, processo, serviço ou código..."
+            value="${escapeHtml(state.financeQuery || '')}"
+          >
+        </div>
 
-        ${kpi(
-          'Faturado',
-          money(billed),
-          'Total das solicitações'
-        )}
+        <div class="field small">
+          <label>Status</label>
+          <select id="financeFilterStatus">
+            <option value="">Todos</option>
+            ${Object.entries(statusLabel).map(([k, v]) => `
+              <option value="${escapeHtml(k)}" ${state.financeStatus === k ? 'selected' : ''}>${escapeHtml(v)}</option>
+            `).join('')}
+          </select>
+        </div>
 
-        ${kpi(
-          'Recebido',
-          money(rec),
-          'Pagamentos registrados'
-        )}
+        <div class="field small">
+          <label>Área</label>
+          <select id="financeFilterArea">
+            <option value="">Todas</option>
+            ${areas.map(v => `
+              <option value="${escapeHtml(v)}" ${state.financeArea === v ? 'selected' : ''}>${escapeHtml(v)}</option>
+            `).join('')}
+          </select>
+        </div>
 
-        ${kpi(
-          'A receber',
-          money(due),
-          'Saldo em aberto'
-        )}
-
-        ${kpi(
-          'Em atraso',
-          money(
-            db.requests
-              .filter(
-                r =>
-                  daysTo(r.prazo) < 0 &&
-                  r.valor > r.recebido
-              )
-              .reduce(
-                (a, r) =>
-                  a +
-                  (r.valor -
-                    r.recebido),
-                0
-              )
-          ),
-          'Prazos vencidos'
-        )}
-
+        <div class="field small">
+          <label>Visualização</label>
+          <select id="financeViewMode">
+            <option value="tabela">Tabela</option>
+          </select>
+        </div>
       </div>
 
-      <div
-        class="card"
-        style="margin-top:16px"
-      >
-
-        <div class="card-head">
-          <h2>Contas a receber</h2>
-        </div>
-
-        <div class="table-wrap">
-
-          <table>
-
-            <thead>
-              <tr>
-                <th>Solicitação</th>
-                <th>Advogado</th>
-                <th>Serviço</th>
-                <th>Cobrado</th>
-                <th>Recebido</th>
-                <th>Saldo</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-
-            <tbody>
-
-              ${
-                db.requests
-                  .filter(
-                    r =>
-                      r.valor >
-                      r.recebido
-                  )
-                  .map(
-                    r => `
-                      <tr data-open="${r.id}">
-
-                        <td>
-                          ${codigoComCopia(r.codigo)}
-                        </td>
-
-                        <td>
-                          ${r.advogado}
-                        </td>
-
-                        <td>
-                          ${r.tipo}
-                        </td>
-
-                        <td class="money">
-                          ${money(r.valor)}
-                        </td>
-
-                        <td class="money">
-                          ${money(
-                            r.recebido
-                          )}
-                        </td>
-
-                        <td class="money">
-                          ${money(
-                            r.valor -
-                              r.recebido
-                          )}
-                        </td>
-
-                        <td>
-                          <span
-                            class="status ${
-                              daysTo(
-                                r.prazo
-                              ) < 0
-                                ? 'atrasado'
-                                : 'aguardando'
-                            }"
-                          >
-                            ${
-                              daysTo(
-                                r.prazo
-                              ) < 0
-                                ? 'Em atraso'
-                                : 'A receber'
-                            }
-                          </span>
-                        </td>
-
-                      </tr>
-                    `
-                  )
-                  .join('')
-              }
-
-            </tbody>
-
-          </table>
-
-        </div>
-
+      <div class="grid kpi-grid financeiro-kpis" style="margin-top:16px">
+        ${kpi('Faturado', money(billed), 'Total das solicitações')}
+        ${kpi('Recebido', money(rec), 'Pagamentos registrados')}
+        ${kpi('A receber', money(due), 'Saldo em aberto')}
+        ${kpi('Em atraso', money(overdue), 'Prazos vencidos')}
       </div>
 
-      <div
-        class="card"
-        style="margin-top:16px"
-      >
+      <div class="finance-filter-summary" id="financeFilterSummary" style="margin-top:12px">
+        <strong>${filtered.length}</strong> trabalho(s) encontrado(s)
+        <span>·</span> Faturado <strong>${money(billed)}</strong>
+        <span>·</span> Recebido <strong>${money(rec)}</strong>
+        <span>·</span> A receber <strong>${money(due)}</strong>
+      </div>
 
-        <div class="card-head">
-          <div>
-            <h2>Histórico financeiro</h2>
-            <p class="muted" style="margin-top:4px">Solicitações encerradas financeiramente e seus recebimentos registrados.</p>
-          </div>
-        </div>
-
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Solicitação</th>
-                <th>Advogado</th>
-                <th>Serviço</th>
-                <th>Cobrado</th>
-                <th>Recebido</th>
-                <th>Último recebimento</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${
-                db.requests
-                  .filter(r => r.status === 'CONCLUÍDO')
-                  .map(r => `
-                    <tr data-open="${r.id}">
-                      <td>${codigoComCopia(r.codigo)}</td>
-                      <td>${escapeHtml(r.advogado)}</td>
-                      <td>${escapeHtml(r.tipo)}</td>
-                      <td class="money">${money(r.valor)}</td>
-                      <td class="money">${money(r.recebido)}</td>
-                      <td>
-                        ${r.ultimoPagamento
-                          ? `${fmtDate(r.ultimoPagamento.data_pagamento)} · ${escapeHtml(formatarFormaPagamento(r.ultimoPagamento.forma_pagamento))}`
-                          : '<span class="muted">Sem pagamento registrado</span>'}
-                      </td>
-                      <td>
-                        <span class="status concluido">Concluído</span>
-                      </td>
-                    </tr>
-                  `)
-                  .join('') || `
-                    <tr>
-                      <td colspan="7">
-                        <div class="empty">Nenhuma solicitação concluída financeiramente.</div>
-                      </td>
-                    </tr>
-                  `
-              }
-            </tbody>
-          </table>
-        </div>
-
+      <div id="financeTables">
+        ${financeiroTabelas(filtered)}
       </div>
       `
     );
   },
+
 
   relatorios() {
     const areas = {};
@@ -4766,6 +5005,12 @@ function openDetail(id) {
 
         <div class="drawer-body">
 
+          ${isAdministrador() && r.status === 'CONCLUIDO' ? `
+            <div class="notice" style="margin-bottom:14px">
+              Ajuste financeiro excepcional: <strong>Ctrl + Shift + E</strong>
+            </div>
+          ` : ''}
+
           <h2 class="detail-title">
             ${r.tipo}
           </h2>
@@ -5592,8 +5837,19 @@ function editRequestModal(r) {
               <div class="field"><label>Prazo</label><input class="input" type="date" name="prazo" value="${r.prazo || ''}"></div>
               <div class="field">
                 <label>Valor cobrado</label>
-                <input class="input" name="valor_cobrado" inputmode="decimal" value="${Number(r.valor || 0).toFixed(2).replace('.', ',')}"${r.status === 'CONCLUÍDO' ? ' readonly aria-readonly="true" title="O valor cobrado não pode ser alterado após o encerramento financeiro."' : ''}>
-                ${r.status === 'CONCLUÍDO' ? '<small class="muted" style="display:block;margin-top:5px">Bloqueado após o encerramento financeiro.</small>' : ''}
+                <div style="display:flex;gap:8px;align-items:center">
+                  <input class="input" id="editValorCobrado" name="valor_cobrado" inputmode="decimal" value="${Number(r.valor || 0).toFixed(2).replace('.', ',')}"${['CONCLUIDO','CONCLUÍDO'].includes(r.status) ? ' readonly aria-readonly="true" tabindex="-1"' : ''} style="flex:1">
+                  ${['CONCLUIDO','CONCLUÍDO'].includes(r.status) && isAdministrador() ? `
+                    <button
+                      type="button"
+                      class="icon-btn financial-lock-btn"
+                      data-open-financial-adjustment="true"
+                      title="Ajuste financeiro excepcional"
+                      aria-label="Abrir ajuste financeiro excepcional"
+                    >🔒</button>
+                  ` : ''}
+                </div>
+                ${['CONCLUIDO','CONCLUÍDO'].includes(r.status) ? `<small class="muted" style="display:block;margin-top:5px">${isAdministrador() ? 'Bloqueado após o encerramento financeiro. Use o cadeado para ajuste excepcional.' : 'Bloqueado após o encerramento financeiro.'}</small>` : ''}
               </div>
               <div class="field"><label>Origem</label><select class="input" name="origem">
                 ${['Indicação','Instagram','Site','WhatsApp','Cliente antigo','LinkedIn','Outro'].map(v => `<option${r.origem === v ? ' selected' : ''}>${v}</option>`).join('')}
@@ -5645,8 +5901,7 @@ function editRequestModal(r) {
   $('#editRequestModal').addEventListener('click', e => {
     if (e.target.matches('[data-close]')) closeModal();
   });
-
-  // Ações dos cadastros relacionados: listeners diretos no modal.
+// Ações dos cadastros relacionados: listeners diretos no modal.
   // Mantemos também a delegação global como fallback, mas o listener direto
   // garante que o clique funcione mesmo após a reconstrução do modal.
   $('#editRequestModal').querySelectorAll('[data-edit-entity]').forEach(button => {
@@ -5865,7 +6120,30 @@ function initEventDelegation() {
       const menu = document.getElementById('profileMenu');
       if (menu && !event.target.closest('#profileBtn') && !menu.contains(event.target)) menu.remove();
     });
-    document.addEventListener('keydown', event => {
+    document.addEventListener('click', event => {
+  const target = event.target?.closest?.('.financial-lock-btn[data-open-financial-adjustment]');
+  if (!target) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  if (!isAdministrador()) {
+    showToast('Somente Administradores podem realizar ajustes financeiros.');
+    return;
+  }
+
+  if (!['solicitacoes', 'financeiro'].includes(state.view) || !state.selected) return;
+
+  const r = db.requests.find(item => item.id === state.selected);
+  if (!r || !['CONCLUIDO', 'CONCLUÍDO'].includes(r.status)) {
+    showToast('O ajuste financeiro excepcional está disponível somente para solicitações concluídas.');
+    return;
+  }
+
+  abrirModalAjusteFinanceiro(r);
+});
+
+document.addEventListener('keydown', event => {
       if (event.key === 'Escape') {
         const menu = document.getElementById('profileMenu');
         if (menu) menu.remove();
@@ -6051,6 +6329,14 @@ function initEventDelegation() {
       return;
     }
 
+    const financeQ = event.target.closest('#financeQ');
+    if (financeQ) {
+      state.financeQuery = financeQ.value;
+      clearTimeout(queryRenderTimer);
+      queryRenderTimer = setTimeout(() => atualizarFinanceiroFiltrado(), 80);
+      return;
+    }
+
     const q = event.target.closest('#q');
     if (q) {
       state.query = q.value;
@@ -6076,6 +6362,20 @@ function initEventDelegation() {
   });
 
   content.addEventListener('change', event => {
+    const financeStatus = event.target.closest('#financeFilterStatus');
+    if (financeStatus) {
+      state.financeStatus = financeStatus.value;
+      atualizarFinanceiroFiltrado();
+      return;
+    }
+
+    const financeArea = event.target.closest('#financeFilterArea');
+    if (financeArea) {
+      state.financeArea = financeArea.value;
+      atualizarFinanceiroFiltrado();
+      return;
+    }
+
     const status = event.target.closest('#filterStatus');
     if (status) {
       state.status = status.value;
@@ -6178,6 +6478,34 @@ function kanban() {
     </div>
   `;
 }
+
+
+document.addEventListener('keydown', event => {
+  const tecla = String(event.key || '').toLowerCase();
+  const atalhoAjusteFinanceiro =
+    (event.ctrlKey || event.metaKey) && event.shiftKey && tecla === 'e';
+
+  if (!atalhoAjusteFinanceiro) return;
+
+  if (!isAdministrador()) return;
+  if (!['solicitacoes', 'financeiro'].includes(state.view) || !state.selected) return;
+
+  // O atalho funciona com o drawer da solicitação aberto, inclusive
+  // quando o foco estiver em um campo do formulário.
+  if (!$('#drawerBackdrop')) return;
+
+  // Evita abrir um segundo modal caso outro modal já esteja em uso.
+  if ($('#modalRoot')?.querySelector('.modal-backdrop')) return;
+
+  const r = db.requests.find(item => item.id === state.selected);
+  if (!r || !['CONCLUIDO', 'CONCLUÍDO'].includes(r.status)) {
+    showToast('O ajuste financeiro excepcional está disponível somente para solicitações concluídas.');
+    return;
+  }
+
+  event.preventDefault();
+  abrirModalAjusteFinanceiro(r);
+});
 
 $('#menuBtn').addEventListener(
   'click',
